@@ -731,25 +731,24 @@ export function DataTable<TData, TValue>({
       </div>
       )}
 
-      {/* 表格：数据少时高度随内容自适应，数据多时最大一屏并内部滚动，表头 sticky 吸顶 */}
-      <div
-        ref={scrollContainerRef}
-        onMouseDown={handleScrollMouseDown}
-        className={cn(
-          "border-0 bg-card overflow-auto scroll-container",
-          isDraggingScroll && "dragging-scroll"
-        )}
-        style={{ minHeight: '12rem', maxHeight: 'calc(100vh - 12rem)' }}
-      >
-        <Table 
-          noWrapper
-          className="border-collapse sticky-table"
-          style={{ 
-            width: table.getCenterTotalSize(),
-            minWidth: '100%'
-          }}
+      {/* 表格 */}
+      <div className="border-0 bg-card overflow-hidden">
+        <div
+          ref={scrollContainerRef}
+          className={cn(
+            "overflow-x-auto scroll-container",
+            isDraggingScroll && "dragging-scroll"
+          )}
+          onMouseDown={handleScrollMouseDown}
         >
-            <TableHeader className="sticky top-0 z-20 shadow-sm bg-card [&_tr]:bg-card [&_th]:bg-card">
+          <Table
+            className="border-collapse sticky-table"
+            style={{
+              width: table.getCenterTotalSize(),
+              minWidth: '100%'
+            }}
+          >
+            <TableHeader className="bg-gradient-to-r from-gray-50/80 to-gray-100/80 dark:from-gray-800/80 dark:to-gray-700/80">
             {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id} className="hover:bg-transparent border-b-2 border-border/50 [&_th]:pb-3 [&_th]:pt-3 [&_th]:border-t-0 [&_th]:first:pl-4 [&_th]:last:pr-4">
                   {/* 展开图标列占位（如果启用展开行功能） */}
@@ -1323,6 +1322,7 @@ export function DataTable<TData, TValue>({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* 分页 */}

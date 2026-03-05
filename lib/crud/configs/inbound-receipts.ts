@@ -127,6 +127,19 @@ export const inboundReceiptConfig: EntityConfig = {
       sortable: true,
       computed: true, // 计算字段：从关联的 inventory_lots 按板数加权平均计算
     },
+    location_registration: {
+      key: 'location_registration',
+      label: '位置登记',
+      type: 'text',
+      sortable: false,
+      computed: true, // 前端根据子表明细（inventory_lots）的仓库位置是否有值动态计算，不落库
+    },
+    current_location: {
+      key: 'current_location',
+      label: '现在位置',
+      type: 'text',
+      sortable: false, // 来自提柜管理，API 中从 orders.pickup_management 带出
+    },
     unload_method_code: {
       key: 'unload_method_code',
       label: '卸货方式代码',
@@ -171,6 +184,7 @@ export const inboundReceiptConfig: EntityConfig = {
       'ready_date',
       'lfd_date',
       'pickup_date',
+      'current_location',
       'carrier',
       'status',
       'planned_unload_at',
@@ -178,6 +192,7 @@ export const inboundReceiptConfig: EntityConfig = {
       'received_by',
       'unload_method_name',
       'delivery_progress',
+      'location_registration',
     ],
     searchFields: ['container_number'], // 只搜索柜号（最重要的字段）
     pageSize: 20,

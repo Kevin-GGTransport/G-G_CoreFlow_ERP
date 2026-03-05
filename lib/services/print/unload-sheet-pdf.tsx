@@ -102,11 +102,16 @@ function createStyles(rowCount: number) {
       marginBottom: 12 * scaleFactor, // 从8增加到12，放大50%
       letterSpacing: 2, // 增加字间距，让柜号更清晰
     },
+    // 第一行柜号下方的条形码区域：居中、放大
+    barcodeBlock: {
+      alignItems: 'center' as const,
+      marginBottom: 12 * scaleFactor,
+    },
     barcodeImage: {
-      width: 150 * scaleFactor, // 条形码宽度
-      height: 50 * scaleFactor, // 条形码高度
-      maxWidth: 150 * scaleFactor,
-      maxHeight: 50 * scaleFactor,
+      width: 280 * scaleFactor,
+      height: 90 * scaleFactor,
+      maxWidth: 280 * scaleFactor,
+      maxHeight: 90 * scaleFactor,
     },
     headerSection: {
       marginBottom: 15 * scaleFactor, // 从10增加到15，放大50%
@@ -188,15 +193,15 @@ function createStyles(rowCount: number) {
  */
 function generateBarcodeImage(barcodeText: string): string {
   try {
-    const canvas = createCanvas(200, 80)
-    // JsBarcode 可以直接传入 canvas 对象
+    // 使用更大画布生成条形码，放大后更清晰
+    const canvas = createCanvas(400, 140)
     JsBarcode(canvas, barcodeText, {
       format: 'CODE128',
-      width: 2,
-      height: 60,
+      width: 2.5,
+      height: 100,
       displayValue: true,
-      fontSize: 14,
-      margin: 5,
+      fontSize: 20,
+      margin: 10,
     })
     return canvas.toDataURL('image/png')
   } catch (error) {
@@ -232,19 +237,18 @@ export function UnloadSheetDocument({ data }: { data: UnloadSheetData }) {
         style={styles.page}
         wrap={false} // 禁用自动换页，强制在一页内
       >
-        {/* 标题：显示柜号，尽可能大 */}
+        {/* 第一行：柜号 */}
         <Text style={styles.title}>{containerNumber || '-'}</Text>
 
-        {/* 主数据：条形码、客户代码等 */}
+        {/* 条形码：直接放在柜号之下，居中放大 */}
+        <View style={styles.barcodeBlock}>
+          {barcodeImage ? (
+            <Image src={barcodeImage} style={styles.barcodeImage} />
+          ) : null}
+        </View>
+
+        {/* 主数据：客户代码、拆柜人员等 */}
         <View style={styles.headerSection}>
-          <View style={styles.headerItem}>
-            <Text style={styles.headerLabel}>条形码：</Text>
-            {barcodeImage ? (
-              <Image src={barcodeImage} style={styles.barcodeImage} />
-            ) : (
-              <Text style={styles.headerValue}>-</Text>
-            )}
-          </View>
           <View style={styles.headerItem}>
             <Text style={styles.headerLabel}>客户代码：</Text>
             <Text style={styles.headerValue}>{data.customerCode || '-'}</Text>

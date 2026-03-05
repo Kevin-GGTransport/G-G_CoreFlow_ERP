@@ -254,6 +254,9 @@ export async function GET(request: NextRequest) {
                 carrier_code: true,
               },
             },
+            pickup_management: {
+              select: { current_location: true },
+            },
           },
         },
         warehouses: {
@@ -273,6 +276,7 @@ export async function GET(request: NextRequest) {
           select: {
             pallet_count: true,
             remaining_pallet_count: true,
+            storage_location_code: true,
           },
         },
       };
@@ -351,6 +355,9 @@ export async function GET(request: NextRequest) {
                     carrier_code: true,
                   },
                 },
+                pickup_management: {
+                  select: { current_location: true },
+                },
               },
             },
             warehouses: {
@@ -370,6 +377,7 @@ export async function GET(request: NextRequest) {
               select: {
                 pallet_count: true,
                 remaining_pallet_count: true,
+                storage_location_code: true,
               },
             },
           };
@@ -447,6 +455,8 @@ export async function GET(request: NextRequest) {
           delivery_progress: calculatedDeliveryProgress,
           // 确保 order_id 也被包含，用于超链接
           order_id: order?.order_id || serialized.order_id || null,
+          // 现在位置：来自提柜管理对应明细
+          current_location: order?.pickup_management?.current_location ?? null,
         };
       } catch (itemError: any) {
         console.error('序列化数据项失败:', itemError, item);

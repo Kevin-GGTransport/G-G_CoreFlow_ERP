@@ -2179,6 +2179,22 @@ export function EntityTable<T = any>({
           )
         }
         
+        // 特殊处理：位置登记（仅入库管理列表，前端根据子表明细 inventory_lots 的仓库位置是否有值动态计算，不落库）
+        if (fieldKey === 'location_registration') {
+          const rowData = row.original as any
+          const lots: any[] = rowData.inventory_lots || []
+          const hasLots = lots.length > 0
+          const allHaveLocation = hasLots && lots.every(
+            (lot: any) => lot.storage_location_code != null && String(lot.storage_location_code).trim() !== ''
+          )
+          const completed = hasLots && allHaveLocation
+          return (
+            <span className={completed ? '' : 'text-red-600 dark:text-red-400 font-medium'}>
+              {completed ? '已完成' : '未完成'}
+            </span>
+          )
+        }
+        
         // 特殊处理：送货进度
         // 对于库存明细（inventory_lots）：实时计算 (实际板数 - 剩余板数) / 实际板数 * 100%
         // 对于入库管理（inbound_receipts）：直接显示 API 返回的计算值（按板数加权平均）
