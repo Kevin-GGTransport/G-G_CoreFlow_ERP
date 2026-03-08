@@ -82,7 +82,7 @@ export const unloadBillConfig: EntityConfig = {
       {
         field: 'unloaded_by',
         label: '拆柜人员',
-        type: 'relation',
+        type: 'select',
         relation: {
           model: 'users',
           displayField: 'full_name',

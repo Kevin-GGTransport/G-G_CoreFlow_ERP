@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkPermission } from '@/lib/api/helpers';
 import prisma from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 const UNLOAD_BILL_LIST_ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_operator', 'wms_operator'];
 
@@ -14,7 +15,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)));
     const sort = searchParams.get('sort') || 'planned_unload_at';
-    const order = searchParams.get('order') === 'asc' ? 'asc' : 'desc';
+    const order: Prisma.SortOrder = searchParams.get('order') === 'asc' ? 'asc' : 'desc';
     const search = (searchParams.get('search') || '').trim();
     const filterUnloadedBy = searchParams.get('filter_unloaded_by');
     const plannedFrom = searchParams.get('filter_planned_unload_at_from');
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
       where.planned_unload_at = dateCondition;
     }
 
-    const orderBy =
+    const orderBy: Prisma.inbound_receiptOrderByWithRelationInput[] =
       sort === 'container_number'
         ? [{ orders: { order_number: order } }]
         : sort === 'amount'

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     const inboundReceipts = await prisma.inbound_receipt.findMany({
       where: {
-        inbound_receipt_id: { in: ids.map((id) => BigInt(id)) },
+        inbound_receipt_id: { in: ids.map((id: number) => BigInt(id)) },
         orders: { operation_mode: 'unload' },
       },
       select: {
