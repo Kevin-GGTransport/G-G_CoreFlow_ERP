@@ -1,6 +1,6 @@
 /**
  * 提柜管理批量导入Excel模板生成器（双 Sheet）
- * Sheet1：MBL，柜号，码头/查验站，承运公司，ETA，LFD，提柜日期
+ * Sheet1：MBL，柜号，码头/查验站，承运公司，ETA，LFD，提柜日期，现在位置
  * Sheet2：提出，报空，还空，码头/查验站，码头位置，柜型，船司，柜号，提柜日期，LFD，MBL，司机，现在位置
  */
 
@@ -61,7 +61,7 @@ export async function generatePickupManagementImportTemplate(
   workbook.creator = 'G&G CoreFlow ERP'
   workbook.created = new Date()
 
-  // ---------- Sheet 1：MBL，柜号，码头/查验站，承运公司，ETA，LFD，提柜日期 ----------
+  // ---------- Sheet 1：MBL，柜号，码头/查验站，承运公司，ETA，LFD，提柜日期，现在位置 ----------
   const sheet1Cols: Array<{ key: string; header: string; width: number; required: boolean }> = [
     { key: 'mbl', header: 'MBL', width: 18, required: false },
     { key: 'container_number', header: '柜号', width: 18, required: true },
@@ -70,6 +70,7 @@ export async function generatePickupManagementImportTemplate(
     { key: 'eta_date', header: 'ETA', width: 12, required: false },
     { key: 'lfd_date', header: 'LFD', width: 12, required: false },
     { key: 'pickup_date', header: '提柜日期', width: 16, required: false },
+    { key: 'current_location', header: '现在位置', width: 14, required: false },
   ]
 
   const sheet1 = workbook.addWorksheet('提柜数据1', {
@@ -132,6 +133,16 @@ export async function generatePickupManagementImportTemplate(
           showErrorMessage: true,
           errorTitle: '无效的日期',
           error: '请使用日期格式（YYYY-MM-DD）或日期时间（提柜日期），日期需在 2020-01-01 至 2099-12-31 之间',
+        }
+      }
+      if (col.key === 'current_location') {
+        cell.dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`"${CURRENT_LOCATION_OPTIONS.join(',')}"`],
+          showErrorMessage: true,
+          errorTitle: '无效的现在位置',
+          error: `请从下拉列表中选择：${CURRENT_LOCATION_OPTIONS.join('、')}`,
         }
       }
     })
@@ -238,7 +249,7 @@ export async function generatePickupManagementImportTemplate(
   // ---------- 填写说明 ----------
   const noteSheet = workbook.addWorksheet('填写说明', { state: 'hidden' })
   noteSheet.getCell('A1').value = '提柜管理批量导入说明（两个 Sheet）'
-  noteSheet.getCell('A2').value = '1. 请在「提柜数据1」填写：MBL、柜号（必填）、码头/查验站、承运公司、ETA、LFD、提柜日期。'
+  noteSheet.getCell('A2').value = '1. 请在「提柜数据1」填写：MBL、柜号（必填）、码头/查验站、承运公司、ETA、LFD、提柜日期、现在位置。'
   noteSheet.getCell('A3').value = '2. 请在「提柜数据2」填写：提出、报空、还空、码头/查验站、码头位置、柜型、船司、柜号（必填）、提柜日期、LFD、MBL、司机、现在位置。提出/报空/还空请填「是」或「否」。'
   noteSheet.getCell('A4').value = '3. 柜号用于匹配系统中已有订单；找不到对应订单时该行会报错。两个 Sheet 按柜号合并后更新，同一柜号可分别在两个 Sheet 中出现。'
   noteSheet.getCell('A5').value = '4. 日期：ETA、LFD 为日期（YYYY-MM-DD）；提柜日期可为日期时间（YYYY-MM-DD HH:mm）。'
@@ -348,6 +359,7 @@ export async function generatePickupExportByTemplate(
     { key: 'eta_date', header: 'ETA', width: 12 },
     { key: 'lfd_date', header: 'LFD', width: 12 },
     { key: 'pickup_date', header: '提柜日期', width: 16 },
+    { key: 'current_location', header: '现在位置', width: 14 },
   ]
 
   const sheet1 = workbook.addWorksheet('提柜数据1', {
@@ -368,6 +380,7 @@ export async function generatePickupExportByTemplate(
       eta_date: formatDateForExport(r.eta_date),
       lfd_date: formatDateForExport(r.lfd_date),
       pickup_date: formatDateTimeForExport(r.pickup_date),
+      current_location: r.current_location ?? '',
     })
   })
 

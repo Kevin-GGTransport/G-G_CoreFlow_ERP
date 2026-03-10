@@ -1,6 +1,6 @@
 /**
  * 提柜管理批量导入验证 Schema（双 Sheet）
- * Sheet1：柜号，MBL，码头/查验站，承运公司，ETA，LFD，提柜日期
+ * Sheet1：柜号，MBL，码头/查验站，承运公司，ETA，LFD，提柜日期，现在位置
  * Sheet2：柜号，提出，报空，还空，码头/查验站，码头位置，柜型，船司，提柜日期，LFD，MBL，司机，现在位置
  */
 
@@ -27,7 +27,7 @@ function optionalBoolean() {
     .optional()
 }
 
-/** Sheet1 单行：柜号，MBL，码头/查验站，承运公司，ETA，LFD，提柜日期 */
+/** Sheet1 单行：柜号，MBL，码头/查验站，承运公司，ETA，LFD，提柜日期，现在位置 */
 export const pickupManagementSheet1RowSchema = z.object({
   container_number: z.string().min(1, '柜号不能为空').transform((s) => s.trim()),
   mbl: optionalStr,
@@ -36,6 +36,7 @@ export const pickupManagementSheet1RowSchema = z.object({
   eta_date: optionalStr,
   lfd_date: optionalStr,
   pickup_date: optionalStr,
+  current_location: optionalStr,
 })
 
 /** Sheet2 单行：柜号，提出，报空，还空，码头/查验站，码头位置，柜型，船司，提柜日期，LFD，MBL，司机，现在位置 */

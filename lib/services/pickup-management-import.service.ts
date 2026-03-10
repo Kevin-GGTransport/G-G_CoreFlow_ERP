@@ -1,6 +1,6 @@
 /**
  * 提柜管理批量导入 Service（双 Sheet）
- * Sheet1：MBL，柜号，码头/查验站，承运公司，ETA，LFD，提柜日期
+ * Sheet1：MBL，柜号，码头/查验站，承运公司，ETA，LFD，提柜日期，现在位置
  * Sheet2：提出，报空，还空，码头/查验站，码头位置，柜型，船司，柜号，提柜日期，LFD，MBL，司机，现在位置
  * 按柜号合并后更新订单与提柜管理，不新建数据。
  */
@@ -28,6 +28,7 @@ const SHEET1_HEADER_MAP: Record<string, string> = {
   'ETA': 'eta_date',
   'LFD': 'lfd_date',
   '提柜日期': 'pickup_date',
+  '现在位置': 'current_location',
 }
 
 const SHEET2_HEADER_MAP: Record<string, string> = {
@@ -235,6 +236,7 @@ function mergeByContainerNumber(
       eta_date: r.eta_date,
       lfd_date: r.lfd_date,
       pickup_date: r.pickup_date,
+      current_location: r.current_location,
     })
   }
   for (const r of sheet2) {
@@ -254,7 +256,7 @@ function mergeByContainerNumber(
       lfd_date: r.lfd_date ?? existing.lfd_date,
       mbl: r.mbl ?? existing.mbl,
       driver_name: r.driver_name,
-      current_location: r.current_location,
+      current_location: r.current_location ?? existing.current_location,
     })
   }
   return Array.from(map.values())
