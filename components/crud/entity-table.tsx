@@ -2555,6 +2555,10 @@ export function EntityTable<T = any>({
               }
             : config.name === 'inbound_receipt'
             ? (row: any) => {
+                // 状态为「查验」时整行红色
+                if (row.status === 'inspection') {
+                  return "bg-gradient-to-r from-red-100 via-red-50/80 to-red-100 dark:from-red-900/40 dark:via-red-900/30 dark:to-red-900/40 hover:from-red-200 hover:via-red-100/80 hover:to-red-200 dark:hover:from-red-800/50 dark:hover:via-red-800/40 dark:hover:to-red-800/50"
+                }
                 // 拆柜人员有值视为已录入，与提柜管理一致的浅绿色
                 if (row.unloaded_by != null && row.unloaded_by !== '' || row.unloaded_by_id != null) {
                   return "bg-gradient-to-r from-green-100 via-emerald-50/80 to-green-100 dark:from-green-900/40 dark:via-emerald-900/30 dark:to-green-900/40 hover:from-green-200 hover:via-emerald-100/80 hover:to-green-200 dark:hover:from-green-800/50 dark:hover:via-emerald-800/40 dark:hover:to-green-800/50"
