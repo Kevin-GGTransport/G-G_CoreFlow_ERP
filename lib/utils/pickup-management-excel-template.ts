@@ -21,6 +21,7 @@ const CURRENT_LOCATION_OPTIONS = [
   '满柜hw',
   '满柜forest',
   '满柜st',
+  '封闭区',
 ]
 
 const CONTAINER_TYPE_OPTIONS = ['40DH', '45DH', '40RH', '45RH', '20GP', '其他']

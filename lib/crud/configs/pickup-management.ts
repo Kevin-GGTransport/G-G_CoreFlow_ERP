@@ -181,6 +181,7 @@ export const pickupManagementConfig: EntityConfig = {
         { label: '满柜hw', value: '满柜hw' },
         { label: '满柜forest', value: '满柜forest' },
         { label: '满柜st', value: '满柜st' },
+        { label: '封闭区', value: '封闭区' },
       ],
     },
     pickup_out: {
