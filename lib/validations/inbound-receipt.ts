@@ -39,7 +39,6 @@ export const inboundReceiptCreateSchema = z.object({
     .max(50, '卸货方式代码长度不能超过 50')
     .optional()
     .nullable(),
-  arrived_at_warehouse: z.boolean().optional(),
 });
 
 // 更新 schema：所有字段都是可选的，但如果有值则必须符合规则
