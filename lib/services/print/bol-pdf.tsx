@@ -194,7 +194,56 @@ const styles = {
 const DISCLAIMER_EN = 'Delivered to a private warehouse: please receiver count the number of goods on the spot and sign, If there is a shortage of goods and abnormal conditions, Please indicate on BOL. If the feedback is abnormal after, we will take the POD signed quantity as the standard.'
 const DISCLAIMER_CN = '派送私人仓货物:请收货仓库当场清点货物件数并签字,如有少货异常请再签收单上注明,事后再反馈我司一律以签收单上的数量为准.'
 
-/** BOL PDF 文档（与样本一致，不生成二维码） */
+/** 每页明细行数，多页时每页保持正常字号不挤 */
+const ROWS_PER_PAGE = 18
+
+function BOLTableHeader() {
+  return (
+    <View style={styles.tableRow}>
+      <View style={[styles.headerCell, styles.colContainer]}><Text>Container</Text></View>
+      <View style={[styles.headerCell, styles.colRemarks]}><Text>备注</Text></View>
+      <View style={[styles.headerCell, styles.colFba]}><Text>FBA</Text></View>
+      <View style={[styles.headerCell, styles.colQty]}><Text>Qty (PLTS)</Text></View>
+      <View style={[styles.headerCell, styles.colBox]}><Text>Box</Text></View>
+      <View style={[styles.headerCell, styles.colStorage]}><Text>Storage</Text></View>
+      <View style={[styles.headerCell, styles.colPo, { borderRightWidth: 0 }]}><Text>PO</Text></View>
+    </View>
+  )
+}
+
+function BOLTableRows({ lines }: { lines: OAKBOLData['lines'] }) {
+  return (
+    <>
+      {lines.map((line, i) => (
+        <View key={i} style={styles.tableRow}>
+          <View style={[styles.dataCell, styles.colContainer]}>
+            <Text>{line.container_number}</Text>
+          </View>
+          <View style={[styles.dataCell, styles.colRemarks]}>
+            <Text>{(line.bol_notes ?? '').toString()}</Text>
+          </View>
+          <View style={[styles.dataCell, styles.colFba]}>
+            <Text>{line.fba_id}</Text>
+          </View>
+          <View style={[styles.dataCellCenter, styles.colQty]}>
+            <Text>{line.qty_plts !== '' && line.qty_plts !== undefined ? String(line.qty_plts) : ''}</Text>
+          </View>
+          <View style={[styles.dataCellCenter, styles.colBox]}>
+            <Text>{line.box !== '' && line.box !== undefined ? String(line.box) : ''}</Text>
+          </View>
+          <View style={[styles.dataCell, styles.colStorage]}>
+            <Text>{line.storage}</Text>
+          </View>
+          <View style={[styles.dataCell, styles.colPo, { borderRightWidth: 0 }]}>
+            <Text>{line.po_id}</Text>
+          </View>
+        </View>
+      ))}
+    </>
+  )
+}
+
+/** BOL PDF 文档（多页：每页固定行数，避免挤在一页） */
 export function BOLDocument({ data }: { data: OAKBOLData }) {
   const {
     printTime,
@@ -209,128 +258,105 @@ export function BOLDocument({ data }: { data: OAKBOLData }) {
   } = data
 
   const logoSrc = logoDataUrl || null
+  const chunks: OAKBOLData['lines'][] = []
+  for (let i = 0; i < lines.length; i += ROWS_PER_PAGE) {
+    chunks.push(lines.slice(i, i + ROWS_PER_PAGE))
+  }
+  if (chunks.length === 0) chunks.push([])
+  const totalPages = chunks.length
 
   return (
     <Document>
-      <Page size="A4" orientation="portrait" style={styles.page} wrap={false}>
-        {/* 顶部：左侧 打印时间，右侧 Logo + 公司名（不生成二维码） */}
-        <View style={styles.headerRow}>
-          <View style={styles.printTimeBlock}>
-            <Text style={styles.printTimeLabel}>打印时间</Text>
-            <Text style={styles.printTimeValue}>{printTime}</Text>
-          </View>
-          <View style={styles.logoBlock}>
-            {logoSrc && <Image src={logoSrc} style={styles.logo} />}
-            <Text style={styles.companyName}>G&G Transport Inc</Text>
-          </View>
-        </View>
-
-        <Text style={styles.title}>BILL OF LADING</Text>
-
-        {/* Ship from / Ship to 表格 */}
-        <View style={styles.shipTable}>
-          <View style={styles.shipRow}>
-            <View style={[styles.shipFromHeader]}><Text>Ship from</Text></View>
-            <View style={[styles.shipToHeader, { borderRightWidth: 0 }]}><Text>Ship to</Text></View>
-          </View>
-          <View style={styles.shipRow}>
-            <View style={[styles.shipFromCell]}><Text>{shipFrom.companyName}</Text></View>
-            <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>{shipTo.destinationCode}</Text></View>
-          </View>
-          <View style={styles.shipRow}>
-            <View style={[styles.shipFromCell]}><Text>{shipFrom.address}</Text></View>
-            <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>{shipTo.address}</Text></View>
-          </View>
-          <View style={styles.shipRow}>
-            <View style={[styles.shipFromCell]}><Text>ATTN: {shipFrom.attn}</Text></View>
-            <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>ATTN: {shipTo.attn}</Text></View>
-          </View>
-          <View style={styles.shipRow}>
-            <View style={[styles.shipFromCell]}><Text>Phone: {shipFrom.phone}</Text></View>
-            <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>Phone: {shipTo.phone}</Text></View>
-          </View>
-        </View>
-
-        {/* Appointment ID | 值 | Appointment time | 值 */}
-        <View style={[styles.shipTable, { marginTop: 0 }]}>
-          <View style={styles.infoRow4}>
-            <View style={[styles.info4Label, { width: '25%' }]}><Text>Appointment ID</Text></View>
-            <View style={[styles.info4Value, { width: '25%' }]}><Text>{appointmentId}</Text></View>
-            <View style={[styles.info4Label, { width: '25%', borderLeftWidth: borderWidth }]}><Text>Appointment time</Text></View>
-            <View style={[styles.info4Value, { width: '25%', borderRightWidth: 0 }]}><Text>{appointmentTime}</Text></View>
-          </View>
-          <View style={styles.infoRow4}>
-            <View style={[styles.info4Label, { width: '25%' }]}><Text>SEAL</Text></View>
-            <View style={[styles.info4Value, { width: '25%' }]}><Text>{seal}</Text></View>
-            <View style={[styles.info4Label, { width: '25%', borderLeftWidth: borderWidth }]}><Text>Container</Text></View>
-            <View style={[styles.info4Value, { width: '25%', borderRightWidth: 0 }]}><Text>{container}</Text></View>
-          </View>
-        </View>
-
-        {/* 明细表：Container | 备注 | FBA | Qty (PLTS) | Box | Storage | PO */}
-        <View style={styles.detailTable}>
-          <View style={styles.tableRow}>
-            <View style={[styles.headerCell, styles.colContainer]}><Text>Container</Text></View>
-            <View style={[styles.headerCell, styles.colRemarks]}><Text>备注</Text></View>
-            <View style={[styles.headerCell, styles.colFba]}><Text>FBA</Text></View>
-            <View style={[styles.headerCell, styles.colQty]}><Text>Qty (PLTS)</Text></View>
-            <View style={[styles.headerCell, styles.colBox]}><Text>Box</Text></View>
-            <View style={[styles.headerCell, styles.colStorage]}><Text>Storage</Text></View>
-            <View style={[styles.headerCell, styles.colPo, { borderRightWidth: 0 }]}><Text>PO</Text></View>
-          </View>
-          {lines.map((line, i) => (
-            <View key={i} style={styles.tableRow}>
-              <View style={[styles.dataCell, styles.colContainer]}>
-                <Text>{line.container_number}</Text>
+      {chunks.map((pageLines, pageIndex) => (
+        <Page key={pageIndex} size="A4" orientation="portrait" style={styles.page} wrap={false}>
+          {pageIndex === 0 ? (
+            <>
+              <View style={styles.headerRow}>
+                <View style={styles.printTimeBlock}>
+                  <Text style={styles.printTimeLabel}>打印时间</Text>
+                  <Text style={styles.printTimeValue}>{printTime}</Text>
+                </View>
+                <View style={styles.logoBlock}>
+                  {logoSrc && <Image src={logoSrc} style={styles.logo} />}
+                  <Text style={styles.companyName}>G&G Transport Inc</Text>
+                </View>
               </View>
-              <View style={[styles.dataCell, styles.colRemarks]}>
-                <Text>{(line.bol_notes ?? '').toString()}</Text>
+              <Text style={styles.title}>BILL OF LADING</Text>
+              <View style={styles.shipTable}>
+                <View style={styles.shipRow}>
+                  <View style={[styles.shipFromHeader]}><Text>Ship from</Text></View>
+                  <View style={[styles.shipToHeader, { borderRightWidth: 0 }]}><Text>Ship to</Text></View>
+                </View>
+                <View style={styles.shipRow}>
+                  <View style={[styles.shipFromCell]}><Text>{shipFrom.companyName}</Text></View>
+                  <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>{shipTo.destinationCode}</Text></View>
+                </View>
+                <View style={styles.shipRow}>
+                  <View style={[styles.shipFromCell]}><Text>{shipFrom.address}</Text></View>
+                  <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>{shipTo.address}</Text></View>
+                </View>
+                <View style={styles.shipRow}>
+                  <View style={[styles.shipFromCell]}><Text>ATTN: {shipFrom.attn}</Text></View>
+                  <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>ATTN: {shipTo.attn}</Text></View>
+                </View>
+                <View style={styles.shipRow}>
+                  <View style={[styles.shipFromCell]}><Text>Phone: {shipFrom.phone}</Text></View>
+                  <View style={[styles.shipToCell, { borderRightWidth: 0 }]}><Text>Phone: {shipTo.phone}</Text></View>
+                </View>
               </View>
-              <View style={[styles.dataCell, styles.colFba]}>
-                <Text>{line.fba_id}</Text>
+              <View style={[styles.shipTable, { marginTop: 0 }]}>
+                <View style={styles.infoRow4}>
+                  <View style={[styles.info4Label, { width: '25%' }]}><Text>Appointment ID</Text></View>
+                  <View style={[styles.info4Value, { width: '25%' }]}><Text>{appointmentId}</Text></View>
+                  <View style={[styles.info4Label, { width: '25%', borderLeftWidth: borderWidth }]}><Text>Appointment time</Text></View>
+                  <View style={[styles.info4Value, { width: '25%', borderRightWidth: 0 }]}><Text>{appointmentTime}</Text></View>
+                </View>
+                <View style={styles.infoRow4}>
+                  <View style={[styles.info4Label, { width: '25%' }]}><Text>SEAL</Text></View>
+                  <View style={[styles.info4Value, { width: '25%' }]}><Text>{seal}</Text></View>
+                  <View style={[styles.info4Label, { width: '25%', borderLeftWidth: borderWidth }]}><Text>Container</Text></View>
+                  <View style={[styles.info4Value, { width: '25%', borderRightWidth: 0 }]}><Text>{container}</Text></View>
+                </View>
               </View>
-              <View style={[styles.dataCellCenter, styles.colQty]}>
-                <Text>{line.qty_plts !== '' && line.qty_plts !== undefined ? String(line.qty_plts) : ''}</Text>
-              </View>
-              <View style={[styles.dataCellCenter, styles.colBox]}>
-                <Text>{line.box !== '' && line.box !== undefined ? String(line.box) : ''}</Text>
-              </View>
-              <View style={[styles.dataCell, styles.colStorage]}>
-                <Text>{line.storage}</Text>
-              </View>
-              <View style={[styles.dataCell, styles.colPo, { borderRightWidth: 0 }]}>
-                <Text>{line.po_id}</Text>
-              </View>
+            </>
+          ) : (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ fontSize: 12, fontWeight: 'bold', fontFamily: FONT_FAMILY }}>BILL OF LADING (continued)</Text>
+              <Text style={{ fontSize: 9, fontFamily: FONT_FAMILY }}>Page {pageIndex + 1} / {totalPages}</Text>
             </View>
-          ))}
-        </View>
+          )}
 
-        {/* 免责声明 */}
-        <View style={styles.disclaimer}>
-          <Text>{DISCLAIMER_EN}</Text>
-          <Text style={{ marginTop: 4 }}>{DISCLAIMER_CN}</Text>
-        </View>
-
-        {/* Shipper Signature / Date */}
-        <View style={styles.signatureRow}>
-          <Text style={styles.signatureLabel}>Shipper Signature:</Text>
-          <View style={styles.signatureLine} />
-          <View style={styles.dateBlock}>
-            <Text style={styles.dateLabel}>Date:</Text>
-            <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#999', minHeight: 12 }} />
+          <View style={styles.detailTable}>
+            <BOLTableHeader />
+            <BOLTableRows lines={pageLines} />
           </View>
-        </View>
 
-        {/* Receiver Signature / Date */}
-        <View style={[styles.signatureRow, { marginTop: 6 }]}>
-          <Text style={styles.signatureLabel}>Receiver Signature:</Text>
-          <View style={styles.signatureLine} />
-          <View style={styles.dateBlock}>
-            <Text style={styles.dateLabel}>Date:</Text>
-            <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#999', minHeight: 12 }} />
-          </View>
-        </View>
-      </Page>
+          {pageIndex === totalPages - 1 && (
+            <>
+              <View style={styles.disclaimer}>
+                <Text>{DISCLAIMER_EN}</Text>
+                <Text style={{ marginTop: 4 }}>{DISCLAIMER_CN}</Text>
+              </View>
+              <View style={styles.signatureRow}>
+                <Text style={styles.signatureLabel}>Shipper Signature:</Text>
+                <View style={styles.signatureLine} />
+                <View style={styles.dateBlock}>
+                  <Text style={styles.dateLabel}>Date:</Text>
+                  <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#999', minHeight: 12 }} />
+                </View>
+              </View>
+              <View style={[styles.signatureRow, { marginTop: 6 }]}>
+                <Text style={styles.signatureLabel}>Receiver Signature:</Text>
+                <View style={styles.signatureLine} />
+                <View style={styles.dateBlock}>
+                  <Text style={styles.dateLabel}>Date:</Text>
+                  <View style={{ flex: 1, borderBottomWidth: 1, borderColor: '#999', minHeight: 12 }} />
+                </View>
+              </View>
+            </>
+          )}
+        </Page>
+      ))}
     </Document>
   )
 }
