@@ -45,7 +45,7 @@ interface WeeklyLocationData {
 
 export function InventoryForecastWeeklyClient() {
   const [data, setData] = React.useState<WeeklyLocationData[]>([])
-  const [summary, setSummary] = React.useState<{ total_delivery_by_day: number[] }>({ total_delivery_by_day: [] })
+  const [summary, setSummary] = React.useState<{ total_unload_by_day: number[]; total_delivery_by_day: number[] }>({ total_unload_by_day: [], total_delivery_by_day: [] })
   const [loading, setLoading] = React.useState(true)
   const [calculating, setCalculating] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
@@ -144,6 +144,7 @@ export function InventoryForecastWeeklyClient() {
       
       setData(weeklyData)
       setSummary({
+        total_unload_by_day: result.summary?.total_unload_by_day ?? [],
         total_delivery_by_day: result.summary?.total_delivery_by_day ?? [],
       })
       setStartDate(mondayString)
@@ -436,17 +437,16 @@ export function InventoryForecastWeeklyClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {/* 汇总行：与库存预测-日第一行一致，显示每周周入库汇总 + 出车数（卡派/自提预约数） */}
+                  {/* 汇总行：入库数（该周拆柜日期内的订单/柜数）+ 出车数（卡派/自提预约数） */}
                   <TableRow className="bg-slate-100/80 dark:bg-slate-800/60 border-b-2 border-slate-200 dark:border-slate-700">
                     <TableCell className="sticky left-0 z-10 font-semibold border-r-2 border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/60">
                       <span className="text-slate-700 dark:text-slate-200">汇总</span>
                     </TableCell>
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((weekNum) => {
-                      const weekInbound = data.reduce(
-                        (s, loc) => s + (loc.weekly_data.find(w => w.week_number === weekNum)?.total_inbound ?? 0),
-                        0
-                      )
                       const dayStart = (weekNum - 1) * 7
+                      const weekUnload = (summary.total_unload_by_day ?? [])
+                        .slice(dayStart, dayStart + 7)
+                        .reduce((a, b) => a + b, 0)
                       const weekDelivery = (summary.total_delivery_by_day ?? [])
                         .slice(dayStart, dayStart + 7)
                         .reduce((a, b) => a + b, 0)
@@ -457,8 +457,7 @@ export function InventoryForecastWeeklyClient() {
                         >
                           <div className="flex flex-col gap-1.5 text-sm">
                             <div className="text-muted-foreground">
-                              周入库汇总：<span className="font-semibold text-indigo-600 dark:text-indigo-400">{weekInbound.toLocaleString()}</span>
-                              <span className="ml-1 text-xs">板</span>
+                              入库数：<span className="font-semibold text-indigo-600 dark:text-indigo-400">{weekUnload.toLocaleString()}</span>
                             </div>
                             <div className="text-muted-foreground">
                               出车数：<span className="font-semibold text-orange-600 dark:text-orange-400">{weekDelivery.toLocaleString()}</span>
