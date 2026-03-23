@@ -3,6 +3,7 @@ import { checkAuth, checkPermission, handleValidationError, handleError, seriali
 import { inboundReceiptUpdateSchema } from '@/lib/validations/inbound-receipt';
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts';
 import prisma from '@/lib/prisma';
+import { computeInboundReceiptHeaderDeliveryProgress } from '@/lib/utils/inbound-delivery-progress';
 
 /**
  * GET /api/wms/inbound-receipts/:id
@@ -54,6 +55,17 @@ export async function GET(
                 container_volume: true,
                 estimated_pallets: true,
                 delivery_nature: true,
+                appointment_detail_lines: {
+                  select: {
+                    estimated_pallets: true,
+                    rejected_pallets: true,
+                    delivery_appointments: {
+                      select: {
+                        confirmed_start: true,
+                      },
+                    },
+                  },
+                },
               } as any,
             },
           },
@@ -110,24 +122,11 @@ export async function GET(
       return sum + volume;
     }, 0) || 0;
 
-    // 计算送货进度：明细为 (实际板数-剩余板数)/实际板数，剩余=0 为 100%；主行 = 各明细按板数加权平均
-    let calculatedDeliveryProgress = 0;
     const inventoryLots = serialized.inventory_lots || [];
-    if (inventoryLots.length > 0) {
-      let totalWeightedProgress = 0;
-      let totalPallets = 0;
-      inventoryLots.forEach((lot: any) => {
-        const pallets = lot.pallet_count !== null && lot.pallet_count !== undefined ? Number(lot.pallet_count) : 0;
-        const remaining = lot.remaining_pallet_count !== null && lot.remaining_pallet_count !== undefined ? Number(lot.remaining_pallet_count) : 0;
-        if (pallets <= 0) return;
-        const progress = remaining === 0 ? 100 : ((pallets - remaining) / pallets) * 100;
-        totalWeightedProgress += progress * pallets;
-        totalPallets += pallets;
-      });
-      if (totalPallets > 0) {
-        calculatedDeliveryProgress = Math.round((totalWeightedProgress / totalPallets) * 100) / 100;
-      }
-    }
+    const calculatedDeliveryProgress = computeInboundReceiptHeaderDeliveryProgress({
+      orderDetails: orderData?.order_detail || [],
+      inventoryLots,
+    });
 
     return NextResponse.json({
       data: {
@@ -251,24 +250,34 @@ export async function PUT(
     const serialized = serializeBigInt(inboundReceipt);
     const orderData = serialized.orders;
 
-    // 计算送货进度：明细为 (实际板数-剩余板数)/实际板数，剩余=0 为 100%；主行 = 各明细按板数加权平均
-    let calculatedDeliveryProgress = 0;
-    const inventoryLots = serialized.inventory_lots || [];
-    if (inventoryLots.length > 0) {
-      let totalWeightedProgress = 0;
-      let totalPallets = 0;
-      inventoryLots.forEach((lot: any) => {
-        const pallets = lot.pallet_count !== null && lot.pallet_count !== undefined ? Number(lot.pallet_count) : 0;
-        const remaining = lot.remaining_pallet_count !== null && lot.remaining_pallet_count !== undefined ? Number(lot.remaining_pallet_count) : 0;
-        if (pallets <= 0) return;
-        const progress = remaining === 0 ? 100 : ((pallets - remaining) / pallets) * 100;
-        totalWeightedProgress += progress * pallets;
-        totalPallets += pallets;
-      });
-      if (totalPallets > 0) {
-        calculatedDeliveryProgress = Math.round((totalWeightedProgress / totalPallets) * 100) / 100;
-      }
-    }
+    const progressSource = await prisma.inbound_receipt.findUnique({
+      where: { inbound_receipt_id: BigInt(resolvedParams.id) },
+      select: {
+        inventory_lots: { select: { order_detail_id: true, pallet_count: true } },
+        orders: {
+          select: {
+            order_detail: {
+              select: {
+                id: true,
+                estimated_pallets: true,
+                appointment_detail_lines: {
+                  select: {
+                    estimated_pallets: true,
+                    rejected_pallets: true,
+                    delivery_appointments: { select: { confirmed_start: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const progressSer = serializeBigInt(progressSource);
+    const calculatedDeliveryProgress = computeInboundReceiptHeaderDeliveryProgress({
+      orderDetails: progressSer?.orders?.order_detail || [],
+      inventoryLots: progressSer?.inventory_lots || [],
+    });
 
     return NextResponse.json({
       data: {
@@ -287,7 +296,6 @@ export async function PUT(
         users_inbound_receipt_received_byTousers: serialized.users_inbound_receipt_received_byTousers || null,
         warehouse_name: serialized.warehouses?.name || null,
         unload_method_name: serialized.unload_methods?.description || null,
-        // 计算后的送货进度（按板数加权平均）
         delivery_progress: calculatedDeliveryProgress,
       },
       message: '拆柜规划更新成功',

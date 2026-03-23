@@ -111,14 +111,23 @@ export async function PUT(
     }
 
     const orderDetailId = existing.order_detail_id;
-    // 仅当请求体明确提供有效数字时才认为「修改了实际板数」，避免只改仓库位置时把板数误写成 0
-    const hasValidPalletCount =
-      data.pallet_count !== undefined &&
-      data.pallet_count !== null &&
-      !Number.isNaN(Number(data.pallet_count));
-    const newPalletCount = hasValidPalletCount ? Number(data.pallet_count) : existing.pallet_count;
+    // undefined = 未传该字段（仅改库位等）；null = 明确清空实际板数 → 写 0；数字 = 更新板数
+    const palletInBody = data.pallet_count;
+    const explicitlyClearPallet = palletInBody === null;
+    const hasPalletUpdate =
+      explicitlyClearPallet ||
+      (palletInBody !== undefined &&
+        palletInBody !== null &&
+        !Number.isNaN(Number(palletInBody)));
+    const newPalletCount = explicitlyClearPallet
+      ? 0
+      : hasPalletUpdate && palletInBody !== null && palletInBody !== undefined
+        ? Number(palletInBody)
+        : existing.pallet_count;
+    // 明确传 null 清空时，即使库中已是 0 也要重算（否则此前按「预计板数兜底」写回的剩余/未约不会回到按 0 基准）
     const shouldRecalculate =
-      hasValidPalletCount && Number(data.pallet_count) !== Number(existing.pallet_count);
+      hasPalletUpdate &&
+      (Number(newPalletCount) !== Number(existing.pallet_count) || explicitlyClearPallet);
 
     // 构建更新数据
     const updateData: any = {};
@@ -143,8 +152,12 @@ export async function PUT(
           data: { pallet_count: newPalletCount },
         })
         
-        // 然后使用统一的重算服务来更新未约板数和剩余板数
-        await recalcUnbookedRemainingForOrderDetail(orderDetailId, tx)
+        // 实际板数变为 0 时：该批次按「真实 0」重算，避免 basePalletCountForCalc(0, 预计) 仍用预计板数导致剩余板数不变
+        const useRawPalletCountForLotIds =
+          newPalletCount === 0 ? [id] : undefined
+        await recalcUnbookedRemainingForOrderDetail(orderDetailId, tx, {
+          useRawPalletCountForLotIds,
+        })
       })
       
       // 重新查询更新后的值（用于返回和后续处理）
@@ -162,9 +175,9 @@ export async function PUT(
       }
       // 注意：pallet_count 已经在事务中更新了，不需要再放入 updateData
     } else {
-      // 实际板数未变化：仅写入实际板数（若请求体明确提供）；剩余板数/未约板数由系统在「实际板数变化」时重算，此处不写入，避免只改仓库位置时被前端传的 0 误覆盖
-      if (hasValidPalletCount) {
-        updateData.pallet_count = Number(data.pallet_count);
+      // 未触发重算事务但请求里带了板数字段（含 null 清空且与现值相同）时补写
+      if (hasPalletUpdate && !shouldRecalculate) {
+        updateData.pallet_count = newPalletCount;
       }
       // 不根据请求体更新 remaining_pallet_count / unbooked_pallet_count，保持库内原值
     }

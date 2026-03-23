@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
+import { computeInboundReceiptHeaderDeliveryProgress } from "@/lib/utils/inbound-delivery-progress"
 import { serializeBigInt } from "@/lib/api/helpers"
 
 // 计算天数差（日期1 - 日期2，只比较日期部分，忽略时间）
@@ -264,6 +265,8 @@ export async function GET(request: NextRequest) {
               },
               appointment_detail_lines: {
                 select: {
+                  estimated_pallets: true,
+                  rejected_pallets: true,
                   delivery_appointments: {
                     select: {
                       reference_number: true,
@@ -296,23 +299,19 @@ export async function GET(request: NextRequest) {
       const lfdDate = order.lfd_date
       const pickupDate = order.pickup_date
       const unloadDate = order.inbound_receipt?.planned_unload_at || null
-      // 送货进度：按明细 (实际板数-剩余板数)/实际板数 计算，剩余=0 为 100%，主行取各明细按板数加权平均
-      const allLots = (order.order_detail || []).flatMap((d: any) => d.inventory_lots || [])
+      // 送货进度：与入库管理主表一致（预约实时剩余 → 按订单明细加权平均）
+      const inventoryLotsForProgress = (order.order_detail || []).flatMap((d: any) =>
+        (d.inventory_lots || []).map((lot: any) => ({
+          order_detail_id: d.id,
+          pallet_count: lot.pallet_count,
+        }))
+      )
       let deliveryProgress: number | null = null
-      if (allLots.length > 0) {
-        let totalWeighted = 0
-        let totalPallets = 0
-        for (const lot of allLots) {
-          const p = lot.pallet_count != null ? Number(lot.pallet_count) : 0
-          const r = lot.remaining_pallet_count != null ? Number(lot.remaining_pallet_count) : 0
-          if (p <= 0) continue
-          const progress = r === 0 ? 100 : ((p - r) / p) * 100
-          totalWeighted += progress * p
-          totalPallets += p
-        }
-        if (totalPallets > 0) {
-          deliveryProgress = Math.round((totalWeighted / totalPallets) * 100) / 100
-        }
+      if (inventoryLotsForProgress.length > 0) {
+        deliveryProgress = computeInboundReceiptHeaderDeliveryProgress({
+          orderDetails: order.order_detail || [],
+          inventoryLots: inventoryLotsForProgress,
+        })
       }
       const returnDeadline = order.return_deadline
 

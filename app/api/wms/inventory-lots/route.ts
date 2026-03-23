@@ -3,6 +3,10 @@ import { checkAuth, checkPermission, handleValidationError, handleError, seriali
 import { inventoryLotCreateSchema } from '@/lib/validations/inventory-lot';
 import prisma from '@/lib/prisma'
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base';
+import {
+  computeInboundOrderDetailDeliveryState,
+  resolveAppointmentsFromOrderDetail,
+} from '@/lib/utils/inbound-delivery-progress';
 import { inventoryLotConfig } from '@/lib/crud/configs/inventory-lots';
 import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-helper';
 import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generator';
@@ -24,15 +28,11 @@ export async function GET(request: NextRequest) {
     const enhancedConfig = enhanceConfigWithSearchFields(inventoryLotConfig)
 
     // 构建查询条件
-    // 只显示已入库的数据：已填位置和板数，且关联的入库管理状态为'received'
+    // 已入库（入库单 status=received）且已登记仓库位置；实际板数可为 0（仍显示在库存管理中）
     const where: any = {
       storage_location_code: {
         not: null,
       },
-      pallet_count: {
-        gt: 0, // 板数必须大于0
-      },
-      // 只显示已入库的数据（inbound_receipt.status = 'received'）
       inbound_receipt: {
         status: 'received',
       },
@@ -369,10 +369,6 @@ export async function GET(request: NextRequest) {
         // 送仓性质
         const deliveryNature = orderDetail?.delivery_nature || null;
         
-        // 实时计算未约板数和剩余板数（与订单明细主表保持一致）
-        // 有效占用 = estimated_pallets - rejected_pallets
-        const effective = (est: number, rej?: number | null) => (est || 0) - (rej ?? 0)
-        // 只包含有效的预约（delivery_appointments 不为 null），过滤掉孤立的记录
         const allAppointmentLines = orderDetail?.appointment_detail_lines || []
         const validAppointmentLines = allAppointmentLines.filter((adl: any) => adl.delivery_appointments !== null)
         const appointments = validAppointmentLines.map((adl: any) => ({
@@ -384,37 +380,17 @@ export async function GET(request: NextRequest) {
           status: adl.delivery_appointments?.status || null,
         }))
 
-        const totalEffectivePallets = appointments.reduce((sum: number, appt: any) => sum + effective(appt.estimated_pallets, appt.rejected_pallets), 0)
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const expiredAppointments = appointments.filter((appt: any) => {
-          if (!appt.confirmed_start) return false
-          const confirmedDate = new Date(appt.confirmed_start)
-          confirmedDate.setHours(0, 0, 0, 0)
-          return confirmedDate <= today  // 包括今天，今天的预约也视为已过期
+        const appointmentsResolved = resolveAppointmentsFromOrderDetail({
+          appointment_detail_lines: validAppointmentLines,
         })
-        const totalExpiredEffectivePallets = expiredAppointments.reduce((sum: number, appt: any) => sum + effective(appt.estimated_pallets, appt.rejected_pallets), 0)
-
-        // 实时计算剩余板数（不依赖数据库字段，确保准确性）
-        // 实际板数为 0 时用预计板数作基准
-        const estimatedPallets = orderDetail?.estimated_pallets ?? null
-        const palletCount = serialized.pallet_count ?? 0
-        const basePallets = basePalletCountForCalc(palletCount, estimatedPallets)
-        const remaining_pallet_count = basePallets - totalExpiredEffectivePallets
-
-        // 实时计算未约板数（不依赖数据库字段，确保一致性）
-        const unbooked_pallet_count = basePallets - totalEffectivePallets
-
-        // 计算送货进度（基准为 0 时用预计板数作分母）
-        let deliveryProgress = null;
-        if (basePallets > 0) {
-          const deliveredCount = basePallets - remaining_pallet_count;
-          deliveryProgress = (deliveredCount / basePallets) * 100;
-          deliveryProgress = Math.round(deliveryProgress * 100) / 100; // 保留两位小数
-          deliveryProgress = Math.max(0, Math.min(100, deliveryProgress)); // 确保在 0-100 之间
-        } else {
-          deliveryProgress = 0;
-        }
+        const state = computeInboundOrderDetailDeliveryState({
+          lots: [{ pallet_count: serialized.pallet_count ?? 0 }],
+          estimatedPallets: orderDetail?.estimated_pallets,
+          appointments: appointmentsResolved,
+        })
+        const remaining_pallet_count = state?.totalRemainingPalletCount ?? 0
+        const unbooked_pallet_count = state?.totalUnbookedPalletCount ?? 0
+        const deliveryProgress = state?.deliveryProgress ?? 0
 
         return {
           ...serialized,

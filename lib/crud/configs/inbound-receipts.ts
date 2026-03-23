@@ -132,7 +132,7 @@ export const inboundReceiptConfig: EntityConfig = {
       label: '送货进度',
       type: 'number',
       sortable: true,
-      computed: true, // 计算字段：从关联的 inventory_lots 按板数加权平均计算
+      computed: true, // 计算字段：与入库详情一致（预约实时剩余，按订单明细基准板数加权平均）
     },
     location_registration: {
       key: 'location_registration',

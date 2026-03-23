@@ -2197,7 +2197,7 @@ export function EntityTable<T = any>({
         
         // 特殊处理：送货进度
         // 对于库存明细（inventory_lots）：实时计算 (实际板数 - 剩余板数) / 实际板数 * 100%
-        // 对于入库管理（inbound_receipts）：直接显示 API 返回的计算值（按板数加权平均）
+        // 对于入库管理（inbound_receipts）：直接显示 API 返回的计算值（与详情预约口径一致）
         if (fieldKey === 'delivery_progress') {
           const rowData = row.original as any
           

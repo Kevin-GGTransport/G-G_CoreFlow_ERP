@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkAuth, serializeBigInt } from '@/lib/api/helpers'
 import prisma from '@/lib/prisma'
-import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
+import {
+  computeInboundOrderDetailDeliveryState,
+  resolveAppointmentsFromOrderDetail,
+} from '@/lib/utils/inbound-delivery-progress'
 
 /**
  * GET /api/oms/order-details
@@ -10,7 +13,7 @@ import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
  * 查询参数：
  * - page: 页码（默认1）
  * - limit: 每页数量（默认20，最大100）
- * - sort: 排序字段（默认id）
+ * - sort: 排序字段（默认 id；storage_location_code 在服务端内存排序，单次最多拉取 10000 条）
  * - order: 排序方向（asc/desc，默认desc）
  * - search: 搜索关键词（仅搜索柜号/订单号）
  * - filter_customer_name: 客户筛选
@@ -21,7 +24,7 @@ import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
  * - filter_planned_unload_at_from/to: 预计拆柜日期范围筛选
  * 
  * 特殊说明：
- * - 未约板数是实时计算的（已入库用inventory_lots.unbooked_pallet_count，未入库用预计板数-预约板数之和）
+ * - 未约/剩余/送货进度：已入库与入库详情一致（预约实时计算）；未入库用预计板数-预约板数之和算未约
  * - 未约板数允许负数（表示多约，会用红色显示）
  * - 当使用未约板数筛选时，会先查询所有数据再筛选，可能有性能影响
  */
@@ -134,6 +137,9 @@ export async function GET(request: NextRequest) {
       }
     } else if (sort === 'operation_mode') {
       orderBy.orders = { operation_mode: order }
+    } else if (sort === 'storage_location_code') {
+      // 仓库位置来自 inventory_lots，在下方对结果集内存排序；此处仅稳定 DB 返回顺序
+      orderBy.id = order === 'asc' ? 'asc' : 'desc'
     } else {
       orderBy[sort] = order
     }
@@ -144,9 +150,17 @@ export async function GET(request: NextRequest) {
     // 若按 ids 筛选，则取满全部 id 且不分页
     const hasIdsFilter = Array.isArray(where.id?.in) && where.id.in.length > 0
     const hasBookingStatusFilter = booking_status_filter && booking_status_filter !== '__all__'
+    const sortByStorageLocation = sort === 'storage_location_code'
+    const needsWideQuery =
+      hasIdsFilter || hasBookingStatusFilter || sortByStorageLocation
     const MAX_QUERY_LIMIT = 10000
-    const queryLimit = hasIdsFilter ? where.id.in.length : (hasBookingStatusFilter ? MAX_QUERY_LIMIT : limit)
-    const querySkip = hasIdsFilter || hasBookingStatusFilter ? undefined : (page - 1) * limit
+    const queryLimit = hasIdsFilter
+      ? where.id.in.length
+      : needsWideQuery
+        ? MAX_QUERY_LIMIT
+        : limit
+    const querySkip =
+      hasIdsFilter || needsWideQuery ? undefined : (page - 1) * limit
     
     const [items, total] = await Promise.all([
       prisma.order_detail.findMany({
@@ -286,44 +300,32 @@ export async function GET(request: NextRequest) {
         : null
 
       const totalEffectivePallets = appointments.reduce((sum: number, appt: any) => sum + effective(appt.estimated_pallets, appt.rejected_pallets), 0)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const expiredAppointments = appointments.filter((appt: any) => {
-        if (!appt.confirmed_start) return false
-        const confirmedDate = new Date(appt.confirmed_start)
-        confirmedDate.setHours(0, 0, 0, 0)
-        return confirmedDate <= today  // 包括今天，今天的预约也视为已过期
+
+      const lotsForCalc = (item.inventory_lots || []).map((lot: any) => ({
+        pallet_count: lot.pallet_count,
+      }))
+      const appointmentsResolved = resolveAppointmentsFromOrderDetail({
+        appointment_detail_lines: validAppointmentLines,
       })
-      const totalExpiredEffectivePallets = expiredAppointments.reduce((sum: number, appt: any) => sum + effective(appt.estimated_pallets, appt.rejected_pallets), 0)
 
-      // 计算剩余板数（实时计算，不依赖数据库字段，确保准确性）
-      // 已入库：基准板数 = 实际板数为 0 时用预计板数，否则用实际板数；剩余 = 基准 - 已过期预约有效板数
-      // 未入库：返回 null
-      const basePallets = il
-        ? basePalletCountForCalc(il.pallet_count, item.estimated_pallets)
-        : 0
-      const remaining_pallets: number | null = il
-        ? basePallets - totalExpiredEffectivePallets
-        : null
-
-      // 计算送货进度（使用实时计算的剩余板数；基准为 0 时用预计板数作分母）
+      let remaining_pallets: number | null = null
       let delivery_progress = 0
-      if (il) {
-        const denom = basePalletCountForCalc(il.pallet_count, item.estimated_pallets)
-        if (denom > 0) {
-          const shipped = denom - (remaining_pallets ?? 0)
-          delivery_progress = Math.round(Math.min(100, (shipped / denom) * 100))
-        } else {
-          delivery_progress = 0
-        }
-      }
+      let unbooked_pallets: number
 
-      // 计算未约板数
-      // 已入库：基准板数 = 实际为 0 时用预计板数
-      // 未入库：预计板数 - 所有预约板数之和（允许负数，负数表示多约）
-      const unbooked_pallets: number = il
-        ? basePallets - totalEffectivePallets
-        : (item.estimated_pallets || 0) - totalEffectivePallets
+      if (lotsForCalc.length > 0) {
+        const state = computeInboundOrderDetailDeliveryState({
+          lots: lotsForCalc,
+          estimatedPallets: item.estimated_pallets,
+          appointments: appointmentsResolved,
+        })!
+        remaining_pallets = state.totalRemainingPalletCount
+        delivery_progress = state.deliveryProgress
+        unbooked_pallets = state.totalUnbookedPalletCount
+      } else {
+        remaining_pallets = null
+        delivery_progress = 0
+        unbooked_pallets = (item.estimated_pallets || 0) - totalEffectivePallets
+      }
 
       // 获取 location_code（从关联数据中获取）
       const delivery_location_code = item.locations_order_detail_delivery_location_idTolocations?.location_code || null
@@ -341,8 +343,8 @@ export async function GET(request: NextRequest) {
         delivery_nature: item.delivery_nature,
         estimated_pallets: item.estimated_pallets || 0,
         actual_pallets: il?.pallet_count || null,
-        remaining_pallets, // 已入库用 inventory_lots.remaining_pallet_count，未入库实时计算
-        unbooked_pallets, // 已入库用 inventory_lots.unbooked_pallet_count，未入库实时计算
+        remaining_pallets, // 已入库：与入库详情相同口径（预约实时）；未入库 null
+        unbooked_pallets, // 已入库：与入库详情相同口径；未入库 预计-预约
         storage_location_code: il?.storage_location_code || null,
         notes: item.notes || null, // 备注应该关联订单明细的备注（order_detail.notes）
         window_period: item.window_period || null,
@@ -357,7 +359,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // 按 ids 参数顺序排列（新建预约时保持勾选顺序）
+    // 按 ids 参数顺序排列（新建预约时保持勾选顺序；与按仓库位置排序互斥时以 ids 顺序为准）
     if (hasIdsFilter && where.id?.in?.length) {
       const idOrder = new Map((where.id.in as bigint[]).map((id, i) => [String(id), i]))
       transformedItems.sort((a, b) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0))
@@ -394,21 +396,44 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 应用预约状态筛选
-    const filteredItems = filterByBookingStatus(transformedItems, booking_status_filter || '')
-    const finalTotal = hasBookingStatusFilter ? filteredItems.length : total
+    // 预约状态筛选
+    let processedItems = filterByBookingStatus(transformedItems, booking_status_filter || '')
 
-    // 性能提示：如果查询的数据量达到上限，可能有数据未被筛选
-    if (hasBookingStatusFilter && items.length >= MAX_QUERY_LIMIT) {
-      console.warn(`[order-details] 预约状态筛选查询已达到上限 ${MAX_QUERY_LIMIT} 条记录，可能有数据未包含在筛选结果中，建议添加其他筛选条件`)
+    // 按仓库位置排序（关联 lot 字段，仅内存排序；按 ids 拉取时保持勾选顺序，不覆盖）
+    if (sortByStorageLocation && !hasIdsFilter) {
+      const dir = order === 'asc' ? 1 : -1
+      const locKey = (row: any) => {
+        const raw = row.storage_location_code
+        if (raw == null || String(raw).trim() === '') return null
+        return String(raw).trim().toLowerCase()
+      }
+      processedItems = [...processedItems].sort((a: any, b: any) => {
+        const ka = locKey(a)
+        const kb = locKey(b)
+        if (ka === null && kb === null) return String(a.id).localeCompare(String(b.id))
+        if (ka === null) return 1 // 无仓库位置排在后面
+        if (kb === null) return -1
+        const c = ka.localeCompare(kb, undefined, { numeric: true, sensitivity: 'base' })
+        if (c !== 0) return dir * c
+        return String(a.id).localeCompare(String(b.id))
+      })
     }
 
-    // 应用分页（在筛选后，如果有筛选的话；按 ids 筛选时返回全部不分页）
+    const finalTotal = hasBookingStatusFilter ? processedItems.length : total
+
+    // 性能提示：宽查询达到上限时结果可能不完整
+    if ((hasBookingStatusFilter || sortByStorageLocation) && items.length >= MAX_QUERY_LIMIT) {
+      console.warn(
+        `[order-details] 查询已达到上限 ${MAX_QUERY_LIMIT} 条（预约筛选或按仓库位置排序），可能有数据未参与筛选/排序，建议缩小筛选范围`
+      )
+    }
+
+    // 分页：宽查询或预约筛选后在内存中切片；ids 筛选返回全部
     const paginatedItems = hasIdsFilter
-      ? filteredItems
-      : hasBookingStatusFilter
-        ? filteredItems.slice((page - 1) * limit, page * limit)
-        : filteredItems
+      ? processedItems
+      : needsWideQuery && !hasIdsFilter
+        ? processedItems.slice((page - 1) * limit, page * limit)
+        : processedItems
 
     // 序列化 BigInt
     const serialized = serializeBigInt(paginatedItems)

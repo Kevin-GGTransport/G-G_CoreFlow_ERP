@@ -17,7 +17,10 @@ import { ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react"
 import Link from "next/link"
 // 移除 Dialog 导入，改用内联编辑
 import { toast } from "sonner"
-import { basePalletCountForCalc } from "@/lib/utils/pallet-base"
+import {
+  computeInboundOrderDetailDeliveryState,
+  getTotalExpiredEffectivePallets,
+} from "@/lib/utils/inbound-delivery-progress"
 
 interface OrderDetail {
   id: string
@@ -72,6 +75,35 @@ interface InboundReceiptDetailsTableProps {
   onRefresh: () => void
 }
 
+type BatchEditRow = {
+  storage_location_code: string
+  /** null = 用户留空，保存时传 null 以清空系统实际板数（服务端写 0） */
+  pallet_count: number | null
+  notes: string
+}
+
+function normalizeBatchRow(r: BatchEditRow) {
+  let pal: number | null
+  if (r.pallet_count === null || r.pallet_count === undefined) {
+    pal = null
+  } else {
+    const n = Number(r.pallet_count)
+    pal = Number.isFinite(n) ? n : null
+  }
+  return {
+    loc: (r.storage_location_code ?? '').trim(),
+    pal,
+    notes: (r.notes ?? '').trim(),
+  }
+}
+
+/** 与进入批量编辑时的快照对比，判断是否改动（含明确改为 0 板数） */
+function isBatchRowDirty(current: BatchEditRow, baseline: BatchEditRow) {
+  const c = normalizeBatchRow(current)
+  const b = normalizeBatchRow(baseline)
+  return c.loc !== b.loc || c.pal !== b.pal || c.notes !== b.notes
+}
+
 export function InboundReceiptDetailsTable({
   inboundReceiptId,
   orderDetails,
@@ -85,16 +117,14 @@ export function InboundReceiptDetailsTable({
   // 批量编辑模式
   const [isBatchEditMode, setIsBatchEditMode] = React.useState(false)
   // 批量编辑值（按 detailId 管理所有行的编辑值）
-  const [batchEditValues, setBatchEditValues] = React.useState<Record<string, {
-    storage_location_code: string
-    pallet_count: number
-    notes: string
-  }>>({})
+  const [batchEditValues, setBatchEditValues] = React.useState<Record<string, BatchEditRow>>({})
+  /** 进入批量编辑瞬间的快照，用于只保存有变更的明细行 */
+  const batchEditBaselineRef = React.useRef<Record<string, BatchEditRow> | null>(null)
   // 单行编辑状态管理（保留兼容性）
   const [editingDetailId, setEditingDetailId] = React.useState<string | null>(null)
   const [editingValues, setEditingValues] = React.useState<{
     storage_location_code: string
-    pallet_count: number
+    pallet_count: number | null
     notes: string
   } | null>(null)
 
@@ -132,7 +162,7 @@ export function InboundReceiptDetailsTable({
     if (lots.length === 0) {
       return {
         storage_location_code: null,
-        total_pallet_count: 0,
+        stored_pallet_count: 0,
         total_remaining_pallet_count: 0,
         total_unbooked_pallet_count: 0,
         delivery_progress: null,
@@ -141,55 +171,54 @@ export function InboundReceiptDetailsTable({
       }
     }
 
-    // 合并多个库存批次：若全部为 0 则用订单明细预计板数作基准（与订单明细 API 一致）
-    const detail = orderDetails.find(d => d.id === detailId)
-    const estimated = detail?.estimated_pallets ?? null
-    const rawPalletSum = lots.reduce((sum, lot) => sum + (lot.pallet_count || 0), 0)
-    const totalPalletCount =
-      lots.length === 1
-        ? basePalletCountForCalc(lots[0].pallet_count, estimated)
-        : rawPalletSum === 0
-          ? (estimated ?? 0)
-          : rawPalletSum
-
-    // 剩余板数：与订单明细管理一致，实时计算 = 基准板数 - 已过期预约有效板数
-    const appointments = detail?.appointments || []
-    const effectivePallets = (appt: DeliveryAppointment) => (appt.estimated_pallets ?? 0) - (appt.rejected_pallets ?? 0)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const expiredAppointments = appointments.filter((appt: DeliveryAppointment) => {
-      const start = appt.confirmed_start
-      if (!start) return false
-      const d = new Date(start)
-      d.setHours(0, 0, 0, 0)
-      return d <= today // 包括今天
-    })
-    const totalExpiredEffectivePallets = expiredAppointments.reduce(
-      (sum: number, appt: DeliveryAppointment) => sum + effectivePallets(appt),
+    const storedPalletTotal = lots.reduce(
+      (sum, lot) => sum + (Number(lot.pallet_count) || 0),
       0
     )
-    const totalRemainingPalletCount = totalPalletCount - totalExpiredEffectivePallets
 
-    // 实时计算未约板数（用于展示）：基于预约
-    const totalAppointmentPallets = appointments.reduce((sum: number, appt: DeliveryAppointment) => {
-      return sum + effectivePallets(appt)
-    }, 0)
-    const totalUnbookedPalletCount = totalPalletCount - totalAppointmentPallets
+    const detail = orderDetails.find(d => d.id === detailId)
+    const appointments = detail?.appointments || []
+    const appointmentInputs = appointments.map((a: DeliveryAppointment) => ({
+      confirmed_start: a.confirmed_start,
+      estimated_pallets: a.estimated_pallets,
+      rejected_pallets: a.rejected_pallets ?? 0,
+    }))
 
-    // 送货进度 = (实际板数 - 剩余板数) / 实际板数；剩余板数为 0 则为 100%
-    let avgDeliveryProgress: number | null = null
-    if (totalPalletCount > 0) {
-      if (totalRemainingPalletCount === 0) {
-        avgDeliveryProgress = 100
+    // 剩余/未约以 DB 为准（与 PUT 清空实际板数后重算一致）；勿用仅按 pallet_count+预计 的客户端公式，否则清空实数后剩余板数仍像「按预计」不变
+    const totalRemainingPalletCount = lots.reduce(
+      (sum, lot) => sum + (Number(lot.remaining_pallet_count) || 0),
+      0
+    )
+    const totalUnbookedPalletCount = lots.reduce(
+      (sum, lot) => sum + (Number(lot.unbooked_pallet_count) || 0),
+      0
+    )
+
+    const totalExpiredEffectivePallets = getTotalExpiredEffectivePallets(appointmentInputs)
+
+    let avgDeliveryProgress: number | null
+    if (lots.length === 1) {
+      const totalBase = totalRemainingPalletCount + totalExpiredEffectivePallets
+      if (totalBase > 0) {
+        if (totalRemainingPalletCount === 0) {
+          avgDeliveryProgress = 100
+        } else {
+          const shipped = totalBase - totalRemainingPalletCount
+          avgDeliveryProgress = Math.round((shipped / totalBase) * 100 * 100) / 100
+          avgDeliveryProgress = Math.max(0, Math.min(100, avgDeliveryProgress))
+        }
       } else {
-        const shipped = totalPalletCount - totalRemainingPalletCount
-        avgDeliveryProgress = Math.round((shipped / totalPalletCount) * 100 * 100) / 100
-        avgDeliveryProgress = Math.max(0, Math.min(100, avgDeliveryProgress))
+        avgDeliveryProgress = 0
       }
     } else {
-      avgDeliveryProgress = 0
+      const state = computeInboundOrderDetailDeliveryState({
+        lots: lots.map((l) => ({ pallet_count: l.pallet_count })),
+        estimatedPallets: detail?.estimated_pallets,
+        appointments: appointmentInputs,
+      })
+      avgDeliveryProgress = state?.deliveryProgress ?? null
     }
-    
+
     // 合并备注（取第一个非空的）
     const unloadTransferNotes = lots.find(lot => lot.unload_transfer_notes)?.unload_transfer_notes || null
     const notes = lots.find(lot => lot.notes)?.notes || null
@@ -199,10 +228,11 @@ export function InboundReceiptDetailsTable({
 
     return {
       storage_location_code: storageLocationCode,
-      total_pallet_count: totalPalletCount,
-      total_remaining_pallet_count: totalRemainingPalletCount, // 实时计算
-      total_unbooked_pallet_count: totalUnbookedPalletCount, // 实时计算
-      delivery_progress: avgDeliveryProgress, // 基于实时计算的剩余板数
+      // 列表「实际板数」：仅数据库 inventory_lots.pallet_count（不用预估兜底，避免与库存管理列表不一致）
+      stored_pallet_count: storedPalletTotal,
+      total_remaining_pallet_count: totalRemainingPalletCount,
+      total_unbooked_pallet_count: totalUnbookedPalletCount,
+      delivery_progress: avgDeliveryProgress,
       unload_transfer_notes: unloadTransferNotes,
       notes: notes,
     }
@@ -210,32 +240,37 @@ export function InboundReceiptDetailsTable({
 
   // 初始化批量编辑值
   const initializeBatchEditValues = () => {
-    const values: Record<string, {
-      storage_location_code: string
-      pallet_count: number
-      notes: string
-    }> = {}
-    
+    const values: Record<string, BatchEditRow> = {}
+
     orderDetails.forEach(detail => {
-      const inventoryInfo = getInventoryInfo(detail.id)
       const existingLots = lotsByDetailId.get(detail.id) || []
-      
-      let initialPalletCount = 0
-      let initialStorageLocation = inventoryInfo.storage_location_code || ''
-      let initialNotes = detail.notes || ''
-      
+
+      let initialPalletCount: number | null = null
+      let initialStorageLocation = ''
+      const initialNotes = detail.notes || ''
+
       if (existingLots.length > 0) {
-        initialPalletCount = existingLots[0].pallet_count || 0
+        initialPalletCount = existingLots[0].pallet_count ?? 0
         initialStorageLocation = existingLots[0].storage_location_code || ''
       }
-      
+
       values[detail.id] = {
         storage_location_code: initialStorageLocation,
         pallet_count: initialPalletCount,
         notes: initialNotes,
       }
     })
-    
+
+    batchEditBaselineRef.current = Object.fromEntries(
+      Object.entries(values).map(([id, row]) => [
+        id,
+        {
+          storage_location_code: row.storage_location_code,
+          pallet_count: row.pallet_count,
+          notes: row.notes,
+        },
+      ])
+    )
     setBatchEditValues(values)
   }
 
@@ -252,22 +287,38 @@ export function InboundReceiptDetailsTable({
   const handleCancelBatchEdit = () => {
     setIsBatchEditMode(false)
     setBatchEditValues({})
+    batchEditBaselineRef.current = null
   }
 
-  // 批量保存
+  // 批量保存（仅提交相对进入批量编辑时有变更的明细行，未改动的不请求接口）
   const handleBatchSave = async () => {
     try {
+      const baseline = batchEditBaselineRef.current
+      if (!baseline) {
+        toast.error('批量编辑状态异常，请取消后重新进入批量编辑')
+        return
+      }
+
       const savePromises: Promise<void>[] = []
-      
+      let dirtyCount = 0
+
       for (const detailId of Object.keys(batchEditValues)) {
         const values = batchEditValues[detailId]
+        const base = baseline[detailId]
+        if (!base || !isBatchRowDirty(values, base)) continue
+
         const orderDetail = orderDetails.find(d => d.id === detailId)
         if (!orderDetail) continue
-        
-        // 创建保存promise
+
+        dirtyCount += 1
+        const c = normalizeBatchRow(values)
+        const b = normalizeBatchRow(base)
+        const notesDirty = c.notes !== b.notes
+        const palletDirty = c.pal !== b.pal
+        const inventoryDirty = c.loc !== b.loc || palletDirty
+
         const savePromise = (async () => {
-          // 更新订单明细的备注
-          if (values.notes !== undefined) {
+          if (notesDirty) {
             const notesResponse = await fetch(`/api/order-details/${detailId}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -275,51 +326,51 @@ export function InboundReceiptDetailsTable({
                 notes: values.notes || null,
               }),
             })
-            
+
             if (!notesResponse.ok) {
               const errorData = await notesResponse.json()
               throw new Error(`更新备注失败: ${errorData.error || '未知错误'}`)
             }
           }
-          
-          // 处理库存批次
+
+          if (!inventoryDirty) return
+
           const existingLots = lotsByDetailId.get(detailId) || []
-          
+          const palletPayload =
+            values.pallet_count == null ? null : (normalizeBatchRow(values).pal ?? 0)
+
           if (existingLots.length > 0) {
             if (existingLots.length === 1) {
-              // 只有一个记录，直接更新
               const firstLot = existingLots[0]
               const response = await fetch(`/api/wms/inventory-lots/${firstLot.inventory_lot_id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   storage_location_code: values.storage_location_code || null,
-                  pallet_count: values.pallet_count ?? firstLot.pallet_count ?? 0,
+                  pallet_count: palletPayload,
                 }),
               })
-              
+
               if (!response.ok) {
                 const errorData = await response.json()
                 throw new Error(`更新失败: ${errorData.error || '未知错误'}`)
               }
             } else {
-              // 有多个记录，更新第一个，删除其他的
               const firstLot = existingLots[0]
               const response = await fetch(`/api/wms/inventory-lots/${firstLot.inventory_lot_id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   storage_location_code: values.storage_location_code || null,
-                  pallet_count: values.pallet_count ?? firstLot.pallet_count ?? 0,
+                  pallet_count: palletPayload,
                 }),
               })
-              
+
               if (!response.ok) {
                 const errorData = await response.json()
                 throw new Error(`更新失败: ${errorData.error || '未知错误'}`)
               }
-              
-              // 删除其他重复的记录
+
               for (let i = 1; i < existingLots.length; i++) {
                 const lotToDelete = existingLots[i]
                 const deleteResponse = await fetch(`/api/wms/inventory-lots/${lotToDelete.inventory_lot_id}`, {
@@ -331,7 +382,6 @@ export function InboundReceiptDetailsTable({
               }
             }
           } else {
-            // 没有现有记录，创建新的
             const response = await fetch('/api/wms/inventory-lots', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -341,29 +391,36 @@ export function InboundReceiptDetailsTable({
                 warehouse_id: warehouseId,
                 inbound_receipt_id: inboundReceiptId,
                 storage_location_code: values.storage_location_code || null,
-                pallet_count: values.pallet_count || 0,
+                pallet_count: values.pallet_count == null ? 0 : (normalizeBatchRow(values).pal ?? 0),
                 remaining_pallet_count: 0,
                 unbooked_pallet_count: 0,
               }),
             })
-            
+
             if (!response.ok) {
               const errorData = await response.json()
               throw new Error(`创建失败: ${errorData.error || '未知错误'}`)
             }
           }
         })()
-        
+
         savePromises.push(savePromise)
       }
-      
-      // 等待所有保存完成
+
+      if (dirtyCount === 0) {
+        toast.info('未检测到变更，未写入任何数据')
+        setIsBatchEditMode(false)
+        setBatchEditValues({})
+        batchEditBaselineRef.current = null
+        return
+      }
+
       await Promise.all(savePromises)
-      
-      toast.success(`成功保存 ${Object.keys(batchEditValues).length} 条记录`)
+
+      toast.success(`已保存 ${dirtyCount} 条有修改的明细`)
       setIsBatchEditMode(false)
       setBatchEditValues({})
-      // 只刷新数据，不刷新整个页面
+      batchEditBaselineRef.current = null
       onRefresh()
     } catch (error: any) {
       console.error('批量保存失败:', error)
@@ -379,12 +436,12 @@ export function InboundReceiptDetailsTable({
     const existingLots = lotsByDetailId.get(detailId) || []
     const orderDetail = orderDetails.find(d => d.id === detailId)
     
-    let initialPalletCount = 0
+    let initialPalletCount: number | null = null
     let initialStorageLocation = inventoryInfo.storage_location_code || ''
     let initialNotes = orderDetail?.notes || ''
     
     if (existingLots.length > 0) {
-      initialPalletCount = existingLots[0].pallet_count || 0
+      initialPalletCount = existingLots[0].pallet_count ?? 0
       initialStorageLocation = existingLots[0].storage_location_code || ''
     }
     
@@ -443,7 +500,10 @@ export function InboundReceiptDetailsTable({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               storage_location_code: editingValues.storage_location_code || null,
-              pallet_count: editingValues.pallet_count ?? firstLot.pallet_count ?? 0,
+              pallet_count:
+                editingValues.pallet_count == null
+                  ? null
+                  : Number(editingValues.pallet_count),
             }),
           })
 
@@ -460,7 +520,10 @@ export function InboundReceiptDetailsTable({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               storage_location_code: editingValues.storage_location_code || null,
-              pallet_count: editingValues.pallet_count ?? firstLot.pallet_count ?? 0,
+              pallet_count:
+                editingValues.pallet_count == null
+                  ? null
+                  : Number(editingValues.pallet_count),
             }),
           })
 
@@ -491,7 +554,7 @@ export function InboundReceiptDetailsTable({
             warehouse_id: warehouseId,
             inbound_receipt_id: inboundReceiptId,
             storage_location_code: editingValues.storage_location_code || null,
-            pallet_count: editingValues.pallet_count || 0,
+            pallet_count: editingValues.pallet_count == null ? 0 : Number(editingValues.pallet_count),
             remaining_pallet_count: 0,
             unbooked_pallet_count: 0,
           }),
@@ -699,7 +762,7 @@ export function InboundReceiptDetailsTable({
                             setBatchEditValues(prev => {
                               const currentValues = prev[detail.id] || {
                                 storage_location_code: '',
-                                pallet_count: 0,
+                                pallet_count: null,
                                 notes: '',
                               }
                               return {
@@ -730,11 +793,13 @@ export function InboundReceiptDetailsTable({
                         type="number"
                         min="0"
                         step="1"
-                        value={
-                          (isBatchEditMode
-                            ? (batchEditValues[detail.id]?.pallet_count?.toString() ?? '0')
-                            : (editingValues?.pallet_count?.toString() ?? '0'))
-                        }
+                        value={(() => {
+                          const raw = isBatchEditMode
+                            ? batchEditValues[detail.id]?.pallet_count
+                            : editingValues?.pallet_count
+                          if (raw === null || raw === undefined) return ''
+                          return String(raw)
+                        })()}
                         onChange={(e) => {
                           const value = e.target.value
                           if (value === '' || value === null || value === undefined) {
@@ -742,21 +807,21 @@ export function InboundReceiptDetailsTable({
                               setBatchEditValues(prev => {
                                 const currentValues = prev[detail.id] || {
                                   storage_location_code: '',
-                                  pallet_count: 0,
+                                  pallet_count: null,
                                   notes: '',
                                 }
                                 return {
                                   ...prev,
                                   [detail.id]: {
                                     ...currentValues,
-                                    pallet_count: 0,
+                                    pallet_count: null,
                                   }
                                 }
                               })
                             } else {
                               setEditingValues(prev => prev ? {
                                 ...prev,
-                                pallet_count: 0
+                                pallet_count: null
                               } : null)
                             }
                             return
@@ -767,7 +832,7 @@ export function InboundReceiptDetailsTable({
                               setBatchEditValues(prev => {
                                 const currentValues = prev[detail.id] || {
                                   storage_location_code: '',
-                                  pallet_count: 0,
+                                  pallet_count: null,
                                   notes: '',
                                 }
                                 return {
@@ -790,7 +855,7 @@ export function InboundReceiptDetailsTable({
                         className="w-full"
                       />
                     ) : (
-                      formatInteger(inventoryInfo.total_pallet_count)
+                      formatInteger(inventoryInfo.stored_pallet_count)
                     )}
                   </TableCell>
                   <TableCell>
@@ -815,7 +880,7 @@ export function InboundReceiptDetailsTable({
                             setBatchEditValues(prev => {
                               const currentValues = prev[detail.id] || {
                                 storage_location_code: '',
-                                pallet_count: 0,
+                                pallet_count: null,
                                 notes: '',
                               }
                               return {

@@ -17,6 +17,14 @@ function getEffectivePallets(estimated: number, rejected: number | null | undefi
   return estimated - (rejected ?? 0)
 }
 
+export type RecalcUnbookedRemainingOptions = {
+  /**
+   * 对这些批次使用「库内 pallet_count 原值」作为基准，不再在 pallet_count===0 时按预计板数兜底。
+   * 用于用户通过 PUT 将实际板数清空/改为 0 后：应视为明确为 0，剩余/未约须按 0 重算，而非回到预计板数。
+   */
+  useRawPalletCountForLotIds?: bigint[]
+}
+
 /**
  * 为单个 order_detail_id 重算并写回未约板数、剩余板数
  * @param orderDetailId 订单明细 ID
@@ -24,7 +32,8 @@ function getEffectivePallets(estimated: number, rejected: number | null | undefi
  */
 export async function recalcUnbookedRemainingForOrderDetail(
   orderDetailId: bigint,
-  tx: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'> = prisma
+  tx: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'> = prisma,
+  options?: RecalcUnbookedRemainingOptions
 ): Promise<void> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -82,8 +91,15 @@ export async function recalcUnbookedRemainingForOrderDetail(
     })
     const estimatedPallets = detailRow?.estimated_pallets ?? null
 
+    const rawSet = new Set(
+      (options?.useRawPalletCountForLotIds ?? []).map((id) => id.toString())
+    )
+
     for (const lot of lots) {
-      const basePallets = basePalletCountForCalc(lot.pallet_count, estimatedPallets)
+      const useRaw = rawSet.has(lot.inventory_lot_id.toString())
+      const basePallets = useRaw
+        ? (lot.pallet_count ?? 0)
+        : basePalletCountForCalc(lot.pallet_count, estimatedPallets)
       const unbooked = basePallets - totalEffective
       const remaining = basePallets - expiredEffective
       await tx.inventory_lots.update({

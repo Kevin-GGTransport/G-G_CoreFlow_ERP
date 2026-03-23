@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
+import {
+  computeInboundOrderDetailDeliveryState,
+  resolveAppointmentsFromOrderDetail,
+} from '@/lib/utils/inbound-delivery-progress'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
@@ -60,10 +63,9 @@ export async function GET(request: NextRequest) {
             notes: true,
           },
           orderBy: [
-            { pallet_count: 'desc' }, // 优先取板数最大的
-            { created_at: 'desc' }, // 其次取最新的
+            { pallet_count: 'desc' },
+            { created_at: 'desc' },
           ],
-          take: 1, // 只取第一个（一个 order_detail 可能对应多个 inventory_lots）
         },
         appointment_detail_lines: {
           select: {
@@ -105,13 +107,9 @@ export async function GET(request: NextRequest) {
       // 从关联数据中获取 location_code
       const locationCode = serialized.locations_order_detail_delivery_location_idTolocations?.location_code || null
 
-      // 获取 inventory_lots 记录：优先取 pallet_count > 0 的记录，如果没有则取第一个
       const inventoryLots = serialized.inventory_lots || []
-      const ilWithPallets = inventoryLots.find((lot: any) => lot.pallet_count > 0)
-      const il = ilWithPallets || inventoryLots[0] || null
 
       const effective = (est: number, rej?: number | null) => (est || 0) - (rej ?? 0)
-      // 只包含有效的预约（delivery_appointments 不为 null），过滤掉孤立的记录
       const allAppointmentLines = serialized.appointment_detail_lines || []
       const validAppointmentLines = allAppointmentLines.filter((adl: any) => adl.delivery_appointments !== null)
       const appointments = validAppointmentLines.map((adl: any) => ({
@@ -124,28 +122,30 @@ export async function GET(request: NextRequest) {
       }))
 
       const totalEffectivePallets = appointments.reduce((sum: number, appt: any) => sum + effective(appt.estimated_pallets, appt.rejected_pallets), 0)
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const expiredAppointments = appointments.filter((appt: any) => {
-        if (!appt.confirmed_start) return false
-        const confirmedDate = new Date(appt.confirmed_start)
-        confirmedDate.setHours(0, 0, 0, 0)
-        return confirmedDate <= today  // 包括今天，今天的预约也视为已过期
+      const lotsForCalc = inventoryLots.map((lot: any) => ({ pallet_count: lot.pallet_count }))
+      const appointmentsResolved = resolveAppointmentsFromOrderDetail({
+        appointment_detail_lines: validAppointmentLines,
       })
-      const totalExpiredEffectivePallets = expiredAppointments.reduce((sum: number, appt: any) => sum + effective(appt.estimated_pallets, appt.rejected_pallets), 0)
 
-      const basePallets = il
-        ? basePalletCountForCalc(il.pallet_count, serialized.estimated_pallets)
-        : 0
-      const remaining_pallets: number | null = il
-        ? Math.max(0, basePallets - totalExpiredEffectivePallets)
-        : null
+      let remaining_pallets: number | null = null
+      let unbooked_pallets: number
+      if (lotsForCalc.length > 0) {
+        const state = computeInboundOrderDetailDeliveryState({
+          lots: lotsForCalc,
+          estimatedPallets: serialized.estimated_pallets,
+          appointments: appointmentsResolved,
+        })!
+        remaining_pallets = state.totalRemainingPalletCount
+        unbooked_pallets = state.totalUnbookedPalletCount
+      } else {
+        remaining_pallets = null
+        unbooked_pallets = (serialized.estimated_pallets || 0) - totalEffectivePallets
+      }
 
-      const actual_pallets: number | null = il?.pallet_count ?? null
-
-      const unbooked_pallets: number = il
-        ? basePallets - totalEffectivePallets
-        : (serialized.estimated_pallets || 0) - totalEffectivePallets
+      const actual_pallets: number | null =
+        inventoryLots.length > 0
+          ? inventoryLots.reduce((s: number, l: any) => s + (l.pallet_count || 0), 0)
+          : null
 
       return {
         ...serialized,

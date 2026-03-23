@@ -24,7 +24,10 @@ export const inventoryLotUpdateSchema = z.object({
   warehouse_id: z.string().min(1).optional(),
   inbound_receipt_id: z.string().optional().nullable(),
   storage_location_code: z.string().max(100).optional().nullable(),
-  pallet_count: z.coerce.number().int().min(0, '实际板数不能为负数').optional(), // 允许 0，与入库管理详情页一致
+  // null = 前端明确清空实际板数（入库详情留空），服务端写入 0
+  pallet_count: z
+    .union([z.number().int().min(0, '实际板数不能为负数'), z.null()])
+    .optional(),
   remaining_pallet_count: z.number().int().min(0).optional().nullable(),
   unbooked_pallet_count: z.number().int().min(0).optional().nullable(),
   delivery_progress: z.number().min(0).max(100).optional().nullable(),

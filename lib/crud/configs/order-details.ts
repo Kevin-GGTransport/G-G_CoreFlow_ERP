@@ -110,7 +110,7 @@ export const orderDetailConfig: EntityConfig = {
       key: 'storage_location_code',
       label: '仓库位置',
       type: 'text',
-      sortable: false, // 关联字段，不支持排序
+      sortable: true, // API 侧内存排序（关联 inventory_lots，最多 1 万条）
       searchable: true,
     },
     notes: {
