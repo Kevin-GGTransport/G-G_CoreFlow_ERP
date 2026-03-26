@@ -55,7 +55,8 @@ export function resolveAppointmentsFromOrderDetail(detail: any): InboundAppointm
 
 /**
  * 与入库详情「仓点明细」getInventoryInfo 一致：
- * 剩余 = 基准板数 − 已到期（含当日）预约有效板数；进度 = 剩余为 0 则 100%，否则 (基准−剩余)/基准。
+ * 剩余 = 基准板数 − 已到期（含当日）预约有效板数；
+ * 送货进度：剩余板数 ≤ 0（含超送为负）时强制 100%；否则在基准总量 > 0 时按 (基准−剩余)/基准。
  * 无 inventory_lots 时返回 null。
  */
 export function computeInboundOrderDetailDeliveryState(input: {
@@ -72,13 +73,11 @@ export function computeInboundOrderDetailDeliveryState(input: {
   if (lots.length === 0) return null
 
   const estimated = estimatedPallets ?? null
-  const rawPalletSum = lots.reduce((sum, lot) => sum + (Number(lot.pallet_count) || 0), 0)
-  const totalPalletCount =
-    lots.length === 1
-      ? basePalletCountForCalc(lots[0].pallet_count, estimated)
-      : rawPalletSum === 0
-        ? (estimated ?? 0)
-        : rawPalletSum
+  // 多批次：各批次基准之和（null 按预计、0 按零），与 recalc 逐批 basePalletCountForCalc 一致
+  const totalPalletCount = lots.reduce(
+    (sum, lot) => sum + basePalletCountForCalc(lot.pallet_count, estimated),
+    0
+  )
 
   const totalExpiredEffectivePallets = getTotalExpiredEffectivePallets(appointments)
   const totalRemainingPalletCount = totalPalletCount - totalExpiredEffectivePallets
@@ -90,14 +89,13 @@ export function computeInboundOrderDetailDeliveryState(input: {
   const totalUnbookedPalletCount = totalPalletCount - totalAppointmentPallets
 
   let deliveryProgress: number
-  if (totalPalletCount > 0) {
-    if (totalRemainingPalletCount === 0) {
-      deliveryProgress = 100
-    } else {
-      const shipped = totalPalletCount - totalRemainingPalletCount
-      deliveryProgress = Math.round((shipped / totalPalletCount) * 100 * 100) / 100
-      deliveryProgress = Math.max(0, Math.min(100, deliveryProgress))
-    }
+  if (totalRemainingPalletCount <= 0) {
+    // 剩余板数为 0 或已超送（负）视为送仓完成，进度 100%（含基准总量为 0 时）
+    deliveryProgress = 100
+  } else if (totalPalletCount > 0) {
+    const shipped = totalPalletCount - totalRemainingPalletCount
+    deliveryProgress = Math.round((shipped / totalPalletCount) * 100 * 100) / 100
+    deliveryProgress = Math.max(0, Math.min(100, deliveryProgress))
   } else {
     deliveryProgress = 0
   }
@@ -139,9 +137,16 @@ export function computeInboundReceiptHeaderDeliveryProgress(input: {
       appointments,
     })
     if (state == null) continue
-    if (state.totalPalletCount <= 0) continue
-    weightedSum += state.deliveryProgress * state.totalPalletCount
-    weightTotal += state.totalPalletCount
+    // 基准为 0 但剩余已送完（remaining≤0）时进度为 100%，按权重 1 参与平均，避免整单被算成 0%
+    const weight =
+      state.totalPalletCount > 0
+        ? state.totalPalletCount
+        : state.totalRemainingPalletCount <= 0
+          ? 1
+          : 0
+    if (weight <= 0) continue
+    weightedSum += state.deliveryProgress * weight
+    weightTotal += weight
   }
 
   if (weightTotal <= 0) return 0

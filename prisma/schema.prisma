@@ -593,7 +593,8 @@ model order_detail_item {
 
 model orders {
   order_id                                         BigInt                    @id @default(autoincrement())
-  order_number                                     String                    @unique @db.VarChar(50)
+  /// 柜号唯一性：仅对非「完成留档」行生效，见迁移 partial unique index（archived 可重复同号）
+  order_number                                     String                    @db.VarChar(50)
   customer_id                                      BigInt?
   user_id                                          BigInt?
   order_date                                       DateTime                  @db.Date
@@ -1002,7 +1003,7 @@ model inventory_lots {
   inbound_receipt_id                     BigInt?
   lot_number                             String?          @db.VarChar(50)
   received_date                          DateTime?        @db.Date
-  pallet_count                           Int              @default(1)
+  pallet_count                           Int? // null=未填实际板数，计算时按预计板数；0=明确零
   remaining_pallet_count                 Int?             @default(0)
   unbooked_pallet_count                  Int?             @default(0)
   delivery_progress                      Decimal?         @db.Decimal(5, 2)

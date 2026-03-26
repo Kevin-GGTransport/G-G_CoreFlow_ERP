@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
+import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 
 function pickPreferredInventoryLot<T extends { inbound_receipt_id: bigint | null; inventory_lot_id: bigint }>(
   lots: T[]
@@ -79,16 +80,14 @@ export async function PUT(
     const totalEffectiveExcludingThis = allLines
       .filter((l) => l.id !== BigInt(resolvedParams.id))
       .reduce((sum: number, l: any) => sum + effective(l.estimated_pallets, l.rejected_pallets), 0)
-    let maxAllowed: number
-    if (inventoryLot && inventoryLot.pallet_count > 0) {
-      maxAllowed = inventoryLot.pallet_count - totalEffectiveExcludingThis
-    } else {
-      const od = await prisma.order_detail.findUnique({
-        where: { id: orderDetailId },
-        select: { estimated_pallets: true },
-      })
-      maxAllowed = (od?.estimated_pallets ?? 0) - totalEffectiveExcludingThis
-    }
+    const odForCap = await prisma.order_detail.findUnique({
+      where: { id: orderDetailId },
+      select: { estimated_pallets: true },
+    })
+    const baseForCap = inventoryLot
+      ? basePalletCountForCalc(inventoryLot.pallet_count, odForCap?.estimated_pallets)
+      : (odForCap?.estimated_pallets ?? 0)
+    const maxAllowed = baseForCap - totalEffectiveExcludingThis
     if (newEstimated! > maxAllowed) {
       return NextResponse.json({ error: `预计板数（${newEstimated}）不能超过总板数（${maxAllowed}）` }, { status: 400 })
     }
@@ -167,7 +166,7 @@ export async function PUT(
               warehouse_id: defaultWarehouse.warehouse_id,
               inbound_receipt_id: inboundReceipt?.inbound_receipt_id ?? null,
               storage_location_code: normalizedStorageLocation,
-              pallet_count: 0,
+              pallet_count: null,
               remaining_pallet_count: 0,
               unbooked_pallet_count: 0,
               status: 'available',

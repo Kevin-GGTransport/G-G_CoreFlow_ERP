@@ -24,6 +24,7 @@ import { buildRelationFilterCondition } from './relation-filter-helper'
 import { enhanceConfigWithSearchFields } from './search-config-generator'
 import prisma from '@/lib/prisma'
 import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date'
+import { ORDER_STATUS_ARCHIVED, parseIncludeArchived } from '@/lib/orders/order-visibility'
 
 /**
  * 获取 Prisma 模型
@@ -313,11 +314,11 @@ export function createListHandler(config: EntityConfig) {
       }
 
       // 状态筛选通过快速筛选处理，这里只处理特殊的归档逻辑
-      if (!searchParams.get('includeArchived') && enhancedConfig.prisma?.model === 'orders') {
+      if (!parseIncludeArchived(searchParams) && enhancedConfig.prisma?.model === 'orders') {
         // 对于订单表，如果没有明确选择状态，默认排除"完成留档"状态
         const statusFilterValue = searchParams.get('filter_status')
         if (!statusFilterValue || statusFilterValue === '__all__') {
-          where.status = { not: 'archived' }
+          where.status = { not: ORDER_STATUS_ARCHIVED }
         }
       }
 

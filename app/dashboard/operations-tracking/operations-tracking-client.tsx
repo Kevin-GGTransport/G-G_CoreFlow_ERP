@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { IncludeArchivedOrdersToggle } from "@/components/order-visibility/include-archived-toggle"
 
 interface OperationsTrackingItem {
   order_id: string
@@ -68,6 +69,7 @@ export function OperationsTrackingClient({ operationMode, title }: OperationsTra
   const [advancedSearchOpen, setAdvancedSearchOpen] = React.useState(false)
   const [advancedSearchValues, setAdvancedSearchValues] = React.useState<Record<string, any>>({})
   const [advancedSearchLogic, setAdvancedSearchLogic] = React.useState<'AND' | 'OR'>('AND')
+  const [includeArchived, setIncludeArchived] = React.useState(false)
 
   // 排序状态（拆柜模式下支持按拆柜日期排序）
   const [sorting, setSorting] = React.useState<SortingState>(() =>
@@ -271,6 +273,10 @@ export function OperationsTrackingClient({ operationMode, title }: OperationsTra
         params.append('sortOrder', sorting[0].desc ? 'desc' : 'asc')
       }
 
+      if (includeArchived) {
+        params.append('includeArchived', 'true')
+      }
+
       const response = await fetch(`/api/operations-tracking?${params.toString()}`)
       if (!response.ok) {
         throw new Error(`获取${title}数据失败`)
@@ -285,7 +291,7 @@ export function OperationsTrackingClient({ operationMode, title }: OperationsTra
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, operationMode, search, filterValues, advancedSearchValues, advancedSearchLogic, sorting, title])
+  }, [page, pageSize, operationMode, search, filterValues, advancedSearchValues, advancedSearchLogic, sorting, title, includeArchived])
 
   // 筛选处理函数
   const handleFilterChange = React.useCallback((field: string, value: any) => {
@@ -606,11 +612,21 @@ export function OperationsTrackingClient({ operationMode, title }: OperationsTra
         onResetAdvancedSearch={handleResetAdvancedSearch}
         fieldFuzzyLoadOptions={fieldFuzzyLoadOptions}
         extraFilterContent={
-          showUnloadFields ? (
-            <Button variant="outline" size="sm" className="h-9 rounded-lg" onClick={handleShowLastMonth}>
-              显示最近一月数据
-            </Button>
-          ) : null
+          <div className="flex flex-wrap items-center gap-3">
+            <IncludeArchivedOrdersToggle
+              checked={includeArchived}
+              onCheckedChange={(v) => {
+                setIncludeArchived(v)
+                setPage(1)
+              }}
+              id="operations-tracking-include-archived"
+            />
+            {showUnloadFields ? (
+              <Button variant="outline" size="sm" className="h-9 rounded-lg" onClick={handleShowLastMonth}>
+                显示最近一月数据
+              </Button>
+            ) : null}
+          </div>
         }
       />
 

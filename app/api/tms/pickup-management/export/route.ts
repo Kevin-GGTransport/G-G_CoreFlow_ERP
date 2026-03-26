@@ -8,6 +8,7 @@ import {
   generatePickupManagementExportExcel,
   PickupManagementExportData,
 } from '@/lib/utils/pickup-management-export-excel'
+import { mergeOrdersRelationExcludeArchived, parseIncludeArchived } from '@/lib/orders/order-visibility'
 
 /**
  * GET /api/tms/pickup-management/export
@@ -113,6 +114,14 @@ export async function GET(request: NextRequest) {
           : mainTableFields.includes(sort)
             ? { [sort]: order }
             : { orders: { [sort]: order } }
+
+    if (!parseIncludeArchived(searchParams)) {
+      if (where.orders) {
+        where.orders = mergeOrdersRelationExcludeArchived(where.orders)
+      } else {
+        where.orders = mergeOrdersRelationExcludeArchived(undefined)
+      }
+    }
 
     const pickups = await prisma.pickup_management.findMany({
       where,

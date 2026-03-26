@@ -37,7 +37,8 @@ interface InventoryLot {
   inventory_lot_id: string
   order_detail_id: string
   storage_location_code: string | null
-  pallet_count: number
+  /** null = 未填（计算按预计板数），0 = 明确为零 */
+  pallet_count: number | null
   remaining_pallet_count: number
   unbooked_pallet_count: number
   delivery_progress: number | null
@@ -74,9 +75,17 @@ interface InboundReceiptDetailsTableProps {
 
 type BatchEditRow = {
   storage_location_code: string
-  /** null = 用户留空，保存时传 null 以清空系统实际板数（服务端写 0） */
+  /** null = 未填实际板数（保存后存库 null，计算按预计）；0 = 明确为零 */
   pallet_count: number | null
   notes: string
+}
+
+/** 列表「实际板数」展示：单条取原值；多条若存在未填则显示为未填（由 formatInteger 显示为 -） */
+function aggregateStoredPalletCountForDisplay(lots: InventoryLot[]): number | null {
+  if (lots.length === 0) return null
+  if (lots.length === 1) return lots[0].pallet_count ?? null
+  if (lots.some((l) => l.pallet_count === null || l.pallet_count === undefined)) return null
+  return lots.reduce((s, l) => s + Number(l.pallet_count), 0)
 }
 
 function normalizeBatchRow(r: BatchEditRow) {
@@ -159,7 +168,7 @@ export function InboundReceiptDetailsTable({
     if (lots.length === 0) {
       return {
         storage_location_code: null,
-        stored_pallet_count: 0,
+        stored_pallet_count: null,
         total_remaining_pallet_count: 0,
         total_unbooked_pallet_count: 0,
         delivery_progress: null,
@@ -167,11 +176,6 @@ export function InboundReceiptDetailsTable({
         notes: null,
       }
     }
-
-    const storedPalletTotal = lots.reduce(
-      (sum, lot) => sum + (Number(lot.pallet_count) || 0),
-      0
-    )
 
     const detail = orderDetails.find(d => d.id === detailId)
     const appointments = detail?.appointments || []
@@ -201,8 +205,8 @@ export function InboundReceiptDetailsTable({
 
     return {
       storage_location_code: storageLocationCode,
-      // 列表「实际板数」：仅数据库 inventory_lots.pallet_count（不用预估兜底，避免与库存管理列表不一致）
-      stored_pallet_count: storedPalletTotal,
+      // 列表「实际板数」：库内原值（null=未填显示 -，0 显示 0）
+      stored_pallet_count: aggregateStoredPalletCountForDisplay(lots),
       total_remaining_pallet_count: totalRemainingPalletCount,
       total_unbooked_pallet_count: totalUnbookedPalletCount,
       delivery_progress: avgDeliveryProgress,
@@ -223,7 +227,7 @@ export function InboundReceiptDetailsTable({
       const initialNotes = detail.notes || ''
 
       if (existingLots.length > 0) {
-        initialPalletCount = existingLots[0].pallet_count ?? 0
+        initialPalletCount = existingLots[0].pallet_count ?? null
         initialStorageLocation = existingLots[0].storage_location_code || ''
       }
 
@@ -309,8 +313,7 @@ export function InboundReceiptDetailsTable({
           if (!inventoryDirty) return
 
           const existingLots = lotsByDetailId.get(detailId) || []
-          const palletPayload =
-            values.pallet_count == null ? null : (normalizeBatchRow(values).pal ?? 0)
+          const palletPayload = normalizeBatchRow(values).pal
 
           if (existingLots.length > 0) {
             if (existingLots.length === 1) {
@@ -364,7 +367,7 @@ export function InboundReceiptDetailsTable({
                 warehouse_id: warehouseId,
                 inbound_receipt_id: inboundReceiptId,
                 storage_location_code: values.storage_location_code || null,
-                pallet_count: values.pallet_count == null ? 0 : (normalizeBatchRow(values).pal ?? 0),
+                pallet_count: normalizeBatchRow(values).pal,
                 remaining_pallet_count: 0,
                 unbooked_pallet_count: 0,
               }),
@@ -414,7 +417,7 @@ export function InboundReceiptDetailsTable({
     let initialNotes = orderDetail?.notes || ''
     
     if (existingLots.length > 0) {
-      initialPalletCount = existingLots[0].pallet_count ?? 0
+      initialPalletCount = existingLots[0].pallet_count ?? null
       initialStorageLocation = existingLots[0].storage_location_code || ''
     }
     
@@ -527,7 +530,7 @@ export function InboundReceiptDetailsTable({
             warehouse_id: warehouseId,
             inbound_receipt_id: inboundReceiptId,
             storage_location_code: editingValues.storage_location_code || null,
-            pallet_count: editingValues.pallet_count == null ? 0 : Number(editingValues.pallet_count),
+            pallet_count: editingValues.pallet_count == null ? null : Number(editingValues.pallet_count),
             remaining_pallet_count: 0,
             unbooked_pallet_count: 0,
           }),

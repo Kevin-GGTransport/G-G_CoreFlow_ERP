@@ -143,9 +143,15 @@ export async function GET(request: NextRequest) {
       }
 
       const actual_pallets: number | null =
-        inventoryLots.length > 0
-          ? inventoryLots.reduce((s: number, l: any) => s + (l.pallet_count || 0), 0)
-          : null
+        inventoryLots.length === 0
+          ? null
+          : inventoryLots.length === 1
+            ? (inventoryLots[0].pallet_count ?? null)
+            : inventoryLots.some(
+                (l: any) => l.pallet_count === null || l.pallet_count === undefined
+              )
+              ? null
+              : inventoryLots.reduce((s: number, l: any) => s + Number(l.pallet_count), 0)
 
       return {
         ...serialized,

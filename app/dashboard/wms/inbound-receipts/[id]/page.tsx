@@ -477,7 +477,7 @@ export default async function InboundReceiptDetailPage({ params }: InboundReceip
                 ...lot,
                 inventory_lot_id: lot.inventory_lot_id.toString(),
                 order_detail_id: lot.order_detail_id.toString(),
-                pallet_count: lot.pallet_count || 0,
+                pallet_count: lot.pallet_count ?? null,
                 remaining_pallet_count: lot.remaining_pallet_count || 0,
                 unbooked_pallet_count: lot.unbooked_pallet_count || 0,
                 delivery_progress: lot.delivery_progress ? Number(lot.delivery_progress) : null,

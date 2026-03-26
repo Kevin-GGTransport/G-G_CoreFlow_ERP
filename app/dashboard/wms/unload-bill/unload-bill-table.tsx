@@ -6,8 +6,11 @@ import { unloadBillConfig } from '@/lib/crud/configs/unload-bills';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { DollarSign, FileDown, Package } from 'lucide-react';
+import { IncludeArchivedOrdersToggle } from '@/components/order-visibility/include-archived-toggle';
 
 const ID_FIELD = 'inbound_receipt_id';
+
+const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {};
 
 /** 本周 = 上周五 到这周四（按用户本地日期，保证“本周”不会跑到下周） */
 function getUnloadBillWeekRange(): { planned_unload_at_from: string; planned_unload_at_to: string } {
@@ -29,6 +32,11 @@ export function UnloadBillTable() {
   const [selectedRows, setSelectedRows] = React.useState<any[]>([]);
   const [applyingDefaults, setApplyingDefaults] = React.useState(false);
   const [applyingByBox, setApplyingByBox] = React.useState(false);
+  const [includeArchived, setIncludeArchived] = React.useState(false);
+  const extraListParams = React.useMemo(
+    () => (includeArchived ? { includeArchived: 'true' } : EMPTY_EXTRA_LIST_PARAMS),
+    [includeArchived]
+  );
 
   const applyDefaultPrices = React.useCallback(async () => {
     const ids = selectedRows.map((r) => r[ID_FIELD]).filter(Boolean);
@@ -82,14 +90,27 @@ export function UnloadBillTable() {
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
     params.delete('page');
     params.delete('limit');
+    if (includeArchived) params.set('includeArchived', 'true');
+    else params.delete('includeArchived');
     const qs = params.toString();
     const url = `/api/wms/unload-bills/export${qs ? `?${qs}` : ''}`;
     if (typeof window !== 'undefined') window.open(url, '_blank');
-  }, []);
+  }, [includeArchived]);
+
+  const customToolbarButtons = React.useMemo(
+    () => (
+      <IncludeArchivedOrdersToggle
+        checked={includeArchived}
+        onCheckedChange={setIncludeArchived}
+        id="unload-bills-include-archived"
+      />
+    ),
+    [includeArchived]
+  );
 
   const customFilterContent = React.useCallback(
     (applyFilterValues: (v: Record<string, string>) => void) => (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -139,8 +160,10 @@ export function UnloadBillTable() {
     <EntityTable
       config={unloadBillConfig}
       refreshKey={refreshKey}
+      customToolbarButtons={customToolbarButtons}
       customFilterContent={customFilterContent}
       customBatchActions={customBatchActions}
+      extraListParams={extraListParams}
       onRowSelectionChange={setSelectedRows}
     />
   );

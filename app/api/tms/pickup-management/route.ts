@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { pickupManagementConfig } from '@/lib/crud/configs/pickup-management'
 import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-helper'
 import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generator'
+import { mergeOrdersRelationExcludeArchived, parseIncludeArchived } from '@/lib/orders/order-visibility'
 
 // GET - 获取提柜管理列表
 export async function GET(request: NextRequest) {
@@ -104,6 +105,15 @@ export async function GET(request: NextRequest) {
         where.orders = { AND: [where.orders, lfdPickupFilter] }
       } else {
         where.orders = lfdPickupFilter
+      }
+    }
+
+    // 默认排除完成留档订单（?includeArchived=true 查看历史）
+    if (!parseIncludeArchived(searchParams)) {
+      if (where.orders) {
+        where.orders = mergeOrdersRelationExcludeArchived(where.orders)
+      } else {
+        where.orders = mergeOrdersRelationExcludeArchived(undefined)
       }
     }
 

@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import { Suspense } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { EntityDetail } from "@/components/crud/entity-detail"
 import { customerConfig } from "@/lib/crud/configs/customers"
@@ -10,12 +11,15 @@ import Link from "next/link"
 import prisma from "@/lib/prisma"
 import { Decimal } from "@prisma/client/runtime/library"
 import { CustomerDetailClient } from "./customer-detail-client"
+import { CustomerIncludeArchivedUrlToggle } from "./customer-include-archived-url-toggle"
+import { mergeOrdersRelationExcludeArchived, parseIncludeArchived } from "@/lib/orders/order-visibility"
 
 interface CustomerDetailPageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ includeArchived?: string }>
 }
 
-export default async function CustomerDetailPage({ params }: CustomerDetailPageProps) {
+export default async function CustomerDetailPage({ params, searchParams }: CustomerDetailPageProps) {
   const session = await auth()
 
   if (!session?.user) {
@@ -24,6 +28,12 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
 
   // 处理 params（Next.js 15 中 params 可能是 Promise）
   const resolvedParams = await params
+  const resolvedSearch = await searchParams
+  const includeArchivedQs = new URLSearchParams()
+  if (resolvedSearch?.includeArchived) {
+    includeArchivedQs.set("includeArchived", String(resolvedSearch.includeArchived))
+  }
+  const includeArchivedOrders = parseIncludeArchived(includeArchivedQs)
 
   // 获取客户详情（用于显示最近订单）
   const customer = await prisma.customers.findUnique({
@@ -33,6 +43,7 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
       orders: {
         take: 10,
         orderBy: { order_date: "desc" },
+        ...(includeArchivedOrders ? {} : { where: mergeOrdersRelationExcludeArchived(undefined) }),
         select: {
           order_id: true,
           order_number: true,
@@ -148,9 +159,14 @@ export default async function CustomerDetailPage({ params }: CustomerDetailPageP
             {/* 最近订单（客户管理特有功能） */}
             {customer && (
               <Card className="border-0 shadow-lg">
-                <CardHeader>
-                  <CardTitle>最近订单</CardTitle>
-                  <CardDescription>客户的最近订单记录</CardDescription>
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between space-y-0">
+                  <div>
+                    <CardTitle>最近订单</CardTitle>
+                    <CardDescription>客户的最近订单记录</CardDescription>
+                  </div>
+                  <Suspense fallback={null}>
+                    <CustomerIncludeArchivedUrlToggle />
+                  </Suspense>
                 </CardHeader>
                 <CardContent>
                   {customer.orders && customer.orders.length > 0 ? (

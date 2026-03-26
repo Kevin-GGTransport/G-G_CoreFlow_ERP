@@ -154,6 +154,8 @@ interface EntityTableProps<T = any> {
   customFilterContent?: (applyFilterValues: (v: Record<string, any>) => void) => React.ReactNode
   /** 附加到列表 API 与地址栏的固定查询参数（如提柜管理 lfd_no_pickup），由父组件控制 */
   extraListParams?: Record<string, string>
+  /** 按列 id / accessorKey 覆盖单元格渲染（完全接管该列展示与交互，例如订单明细内联编辑） */
+  customCellRenderers?: Partial<Record<string, (args: { row: any }) => React.ReactNode>>
 }
 
 export function EntityTable<T = any>({ 
@@ -179,6 +181,7 @@ export function EntityTable<T = any>({
   initialFilterValues,
   customFilterContent,
   extraListParams = EMPTY_EXTRA_LIST_PARAMS,
+  customCellRenderers,
 }: EntityTableProps<T>) {
   // 自动增强配置，生成 filterFields 和 advancedSearchFields（如果未配置）
   const enhancedConfig = React.useMemo(() => {
@@ -1884,6 +1887,9 @@ export function EntityTable<T = any>({
     // 创建 cell 渲染函数
     const createCellRenderer = () => {
       return ({ row }: { row: any }) => {
+        if (customCellRenderers?.[fieldKey]) {
+          return <>{customCellRenderers[fieldKey]!({ row })}</>
+        }
         // 只在客户端且已挂载时检查编辑状态，避免 hydration 错误
         const rowIsEditing = isMounted && isEditable && isRowEditing(row.original)
         
@@ -2237,7 +2243,7 @@ export function EntityTable<T = any>({
         }
         
         // 特殊处理：送货进度
-        // 对于库存明细（inventory_lots）：实时计算 (实际板数 - 剩余板数) / 实际板数 * 100%
+        // 对于库存明细（inventory_lots）：与 computeInboundOrderDetailDeliveryState 一致，剩余板数≤0 则 100%
         // 对于入库管理（inbound_receipts）：直接显示 API 返回的计算值（与详情预约口径一致）
         if (fieldKey === 'delivery_progress') {
           const rowData = row.original as any
@@ -2248,19 +2254,17 @@ export function EntityTable<T = any>({
           let progress = 0
           
           if (isInventoryLot) {
-            // 库存明细：实时计算
             const palletCount = rowData.pallet_count ?? 0
             const remainingCount = rowData.remaining_pallet_count ?? 0
-            
-            // 如果实际板数为0，返回100%（没有库存，视为已送完）
-            progress = 100
-            if (palletCount > 0) {
-              // 已送板数 = 实际板数 - 剩余板数
+            if (remainingCount <= 0) {
+              progress = 100
+            } else if (palletCount > 0) {
               const deliveredCount = palletCount - remainingCount
               progress = (deliveredCount / palletCount) * 100
-              progress = Math.round(progress * 100) / 100 // 保留两位小数
-              // 确保进度在 0-100 之间
+              progress = Math.round(progress * 100) / 100
               progress = Math.max(0, Math.min(100, progress))
+            } else {
+              progress = 0
             }
           } else {
             // 入库管理：直接使用 API 返回的值（已按板数加权平均计算）
@@ -2343,6 +2347,7 @@ export function EntityTable<T = any>({
     fieldLoadOptions,
     fieldOnChangeMap,
     getIdField,
+    customCellRenderers,
   ])
 
   // 使用新框架创建表格配置

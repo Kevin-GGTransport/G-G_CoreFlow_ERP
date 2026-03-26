@@ -4,10 +4,10 @@
  * 公式（含拒收板数）：
  * - 有效占用 = estimated_pallets - (rejected_pallets ?? 0)
  * - 未约板数 = 预计/实际板数 - sum(有效占用)（允许负数，表示已超约）
- * - 剩余板数 = 实际板数 - sum(已到期预约的有效占用)（含当日，与 getTotalExpiredEffectivePallets 一致）
+ * - 剩余板数 = 基准板数 - sum(已到期预约的有效占用)（含当日，与 getTotalExpiredEffectivePallets 一致）
  *
  * 在预约明细增/改/删或拒收板数变更后调用，保证 DB 存库与公式一致。
- * 实际板数为 0 时用订单明细预计板数作基准，避免未约/剩余在仅有批次但未填实数时出现异常。
+ * 基准板数见 basePalletCountForCalc：null=未填按预计，0=明确零。
  */
 
 import prisma from '@/lib/prisma'
@@ -17,14 +17,6 @@ function getEffectivePallets(estimated: number, rejected: number | null | undefi
   return estimated - (rejected ?? 0)
 }
 
-export type RecalcUnbookedRemainingOptions = {
-  /**
-   * 对这些批次使用「库内 pallet_count 原值」作为基准，不再在 pallet_count===0 时按预计板数兜底。
-   * 用于用户通过 PUT 将实际板数清空/改为 0 后：应视为明确为 0，剩余/未约须按 0 重算，而非回到预计板数。
-   */
-  useRawPalletCountForLotIds?: bigint[]
-}
-
 /**
  * 为单个 order_detail_id 重算并写回未约板数、剩余板数
  * @param orderDetailId 订单明细 ID
@@ -32,8 +24,7 @@ export type RecalcUnbookedRemainingOptions = {
  */
 export async function recalcUnbookedRemainingForOrderDetail(
   orderDetailId: bigint,
-  tx: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'> = prisma,
-  options?: RecalcUnbookedRemainingOptions
+  tx: Omit<typeof prisma, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'> = prisma
 ): Promise<void> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -91,15 +82,8 @@ export async function recalcUnbookedRemainingForOrderDetail(
     })
     const estimatedPallets = detailRow?.estimated_pallets ?? null
 
-    const rawSet = new Set(
-      (options?.useRawPalletCountForLotIds ?? []).map((id) => id.toString())
-    )
-
     for (const lot of lots) {
-      const useRaw = rawSet.has(lot.inventory_lot_id.toString())
-      const basePallets = useRaw
-        ? (lot.pallet_count ?? 0)
-        : basePalletCountForCalc(lot.pallet_count, estimatedPallets)
+      const basePallets = basePalletCountForCalc(lot.pallet_count, estimatedPallets)
       const unbooked = basePallets - totalEffective
       const remaining = basePallets - expiredEffective
       await tx.inventory_lots.update({

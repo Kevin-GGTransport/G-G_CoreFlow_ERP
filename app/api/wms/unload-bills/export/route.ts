@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS } from '@/lib/api/helpers';
 import prisma from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
+import { mergeOrdersRelationExcludeArchived, parseIncludeArchived } from '@/lib/orders/order-visibility';
 import { generateUnloadBillExportExcel, UnloadBillExportRow } from '@/lib/utils/unload-bill-export-excel';
 
 const ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_operator', 'wms_operator'];
@@ -19,12 +21,16 @@ export async function GET(request: NextRequest) {
     const filterUnloadedBy = searchParams.get('filter_unloaded_by');
     const plannedFrom = searchParams.get('filter_planned_unload_at_from');
     const plannedTo = searchParams.get('filter_planned_unload_at_to');
+    const includeArchived = parseIncludeArchived(searchParams);
 
+    const ordersBase = {
+      operation_mode: 'unload',
+      ...(search ? { order_number: { contains: search, mode: 'insensitive' } } : {}),
+    };
     const where: any = {
-      orders: {
-        operation_mode: 'unload',
-        ...(search ? { order_number: { contains: search, mode: 'insensitive' } } : {}),
-      },
+      orders: includeArchived
+        ? ordersBase
+        : mergeOrdersRelationExcludeArchived(ordersBase as Prisma.ordersWhereInput),
       ...(filterUnloadedBy ? { unloaded_by: BigInt(filterUnloadedBy) } : {}),
     };
 

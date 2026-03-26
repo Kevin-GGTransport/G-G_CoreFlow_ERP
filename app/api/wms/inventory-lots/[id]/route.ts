@@ -111,23 +111,21 @@ export async function PUT(
     }
 
     const orderDetailId = existing.order_detail_id;
-    // undefined = 未传该字段（仅改库位等）；null = 明确清空实际板数 → 写 0；数字 = 更新板数
+    // undefined = 未传该字段（仅改库位等）；null = 未填实际板数 → 存 null；0 = 明确为零；正整数 = 更新
     const palletInBody = data.pallet_count;
-    const explicitlyClearPallet = palletInBody === null;
+    const explicitlyUnsetPallet = palletInBody === null;
     const hasPalletUpdate =
-      explicitlyClearPallet ||
+      explicitlyUnsetPallet ||
       (palletInBody !== undefined &&
         palletInBody !== null &&
         !Number.isNaN(Number(palletInBody)));
-    const newPalletCount = explicitlyClearPallet
-      ? 0
+    const newPalletCount: number | null = explicitlyUnsetPallet
+      ? null
       : hasPalletUpdate && palletInBody !== null && palletInBody !== undefined
         ? Number(palletInBody)
         : existing.pallet_count;
-    // 明确传 null 清空时，即使库中已是 0 也要重算（否则此前按「预计板数兜底」写回的剩余/未约不会回到按 0 基准）
     const shouldRecalculate =
-      hasPalletUpdate &&
-      (Number(newPalletCount) !== Number(existing.pallet_count) || explicitlyClearPallet);
+      hasPalletUpdate && existing.pallet_count !== newPalletCount;
 
     // 构建更新数据
     const updateData: any = {};
@@ -151,13 +149,8 @@ export async function PUT(
           where: { inventory_lot_id: id },
           data: { pallet_count: newPalletCount },
         })
-        
-        // 实际板数变为 0 时：该批次按「真实 0」重算，避免 basePalletCountForCalc(0, 预计) 仍用预计板数导致剩余板数不变
-        const useRawPalletCountForLotIds =
-          newPalletCount === 0 ? [id] : undefined
-        await recalcUnbookedRemainingForOrderDetail(orderDetailId, tx, {
-          useRawPalletCountForLotIds,
-        })
+
+        await recalcUnbookedRemainingForOrderDetail(orderDetailId, tx)
       })
       
       // 重新查询更新后的值（用于返回和后续处理）

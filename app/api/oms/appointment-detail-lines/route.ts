@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
+import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 
 function pickPreferredInventoryLot<T extends { inbound_receipt_id: bigint | null; inventory_lot_id: bigint }>(
   lots: T[]
@@ -118,7 +119,7 @@ export async function GET(request: NextRequest) {
     // 创建库存映射（order_detail_id -> 第一个 inventory_lot，用于仓库位置与未约板数）
     // 仓库位置 = inventory_lots.storage_location_code，与入库管理详情页为同一字段（同一柜号+同一仓点 = 同一 order_detail_id）
     // orderBy inventory_lot_id 保证与入库详情取到同一“第一个”lot，两边读写一致
-    const inventoryMap = new Map<bigint, { inventory_lot_id: bigint; pallet_count: number; unbooked_pallet_count: number | null; storage_location_code: string | null }>()
+    const inventoryMap = new Map<bigint, { inventory_lot_id: bigint; pallet_count: number | null; unbooked_pallet_count: number | null; storage_location_code: string | null }>()
     const lotsByDetail = new Map<bigint, typeof inventoryLots>()
     inventoryLots.forEach((lot) => {
       const arr = lotsByDetail.get(lot.order_detail_id) || []
@@ -282,22 +283,20 @@ export async function POST(request: NextRequest) {
 
     // 实时计算总板数（用于验证和保存快照）：未约板数 = 预计/实际板数 - 有效占用（有效占用 = estimated_pallets - rejected_pallets）
     const effectiveBooked = (est: number, rej?: number | null) => (est || 0) - (rej ?? 0)
-    let totalPalletsAtTime: number
     const existingAppointmentLines = await prisma.appointment_detail_lines.findMany({
       where: { order_detail_id: orderDetailId },
       select: { estimated_pallets: true, rejected_pallets: true } as { estimated_pallets: true; rejected_pallets: true },
     })
     const totalEffectiveBooked = existingAppointmentLines.reduce((sum, line) => sum + effectiveBooked(line.estimated_pallets, (line as { rejected_pallets?: number | null }).rejected_pallets), 0)
-    if (inventoryLot && inventoryLot.pallet_count > 0) {
-      totalPalletsAtTime = inventoryLot.pallet_count - totalEffectiveBooked
-    } else {
-      const orderDetail = await prisma.order_detail.findUnique({
-        where: { id: orderDetailId },
-        select: { estimated_pallets: true },
-      })
-      const estimatedPallets = orderDetail?.estimated_pallets ?? 0
-      totalPalletsAtTime = estimatedPallets - totalEffectiveBooked
-    }
+    const orderDetailForCap = await prisma.order_detail.findUnique({
+      where: { id: orderDetailId },
+      select: { estimated_pallets: true },
+    })
+    const estCap = orderDetailForCap?.estimated_pallets ?? 0
+    const baseCap = inventoryLot
+      ? basePalletCountForCalc(inventoryLot.pallet_count, orderDetailForCap?.estimated_pallets)
+      : estCap
+    const totalPalletsAtTime = baseCap - totalEffectiveBooked
 
     // 验证预计板数不能超过总板数
     if (estimatedPalletsValue > totalPalletsAtTime) {

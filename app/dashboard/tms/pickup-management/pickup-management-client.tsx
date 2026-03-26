@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { PickupSummaryDialog } from "@/components/pickup-management/pickup-summary-dialog"
 import { PickupImportDialog } from "./pickup-import-dialog"
+import { IncludeArchivedOrdersToggle } from "@/components/order-visibility/include-archived-toggle"
 import {
   generatePickupExportByTemplate,
   type PickupExportRowForTemplate,
@@ -45,6 +46,7 @@ export function PickupManagementClient() {
   const [totalCount, setTotalCount] = React.useState(0)
   const [filteredCount, setFilteredCount] = React.useState(0)
   const [importDialogOpen, setImportDialogOpen] = React.useState(false)
+  const [includeArchived, setIncludeArchived] = React.useState(false)
   // 首次挂载时从 URL 恢复「待提柜」状态（勿在 refreshKey 上重复读 URL，否则会在 router.replace 生效前把状态盖掉，导致要点两次）
   React.useLayoutEffect(() => {
     if (typeof window === "undefined") return
@@ -53,8 +55,11 @@ export function PickupManagementClient() {
   }, [])
 
   const extraListParams = React.useMemo((): Record<string, string> => {
-    return lfdNoPickupActive ? { lfd_no_pickup: "1" } : {}
-  }, [lfdNoPickupActive])
+    const p: Record<string, string> = {}
+    if (lfdNoPickupActive) p.lfd_no_pickup = "1"
+    if (includeArchived) p.includeArchived = "true"
+    return p
+  }, [lfdNoPickupActive, includeArchived])
 
   const toggleLfdNoPickup = React.useCallback(() => {
     const next = !lfdNoPickupActive
@@ -190,7 +195,10 @@ export function PickupManagementClient() {
           : true
       if (!confirmed) return
       toast.loading('正在生成Excel文件，请稍候...')
-      const response = await fetch('/api/tms/pickup-management/export?all=true')
+      const exportAllUrl = new URL('/api/tms/pickup-management/export', window.location.origin)
+      exportAllUrl.searchParams.set('all', 'true')
+      if (includeArchived) exportAllUrl.searchParams.set('includeArchived', 'true')
+      const response = await fetch(exportAllUrl.toString())
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         throw new Error(errorData.error || `导出失败 (${response.status})`)
@@ -209,7 +217,7 @@ export function PickupManagementClient() {
       toast.dismiss()
       toast.error(error.message || '导出失败，请重试')
     }
-  }, [totalCount])
+  }, [totalCount, includeArchived])
 
   // 维护按勾选顺序排列的数组
   React.useEffect(() => {
@@ -527,6 +535,11 @@ export function PickupManagementClient() {
     return (
       <div className="flex flex-col gap-2">
         <div className="flex gap-2 items-center flex-wrap">
+          <IncludeArchivedOrdersToggle
+            checked={includeArchived}
+            onCheckedChange={setIncludeArchived}
+            id="pickup-management-include-archived"
+          />
           <Button
             variant="outline"
             size="sm"
@@ -629,6 +642,7 @@ export function PickupManagementClient() {
     handleExportAll,
     filteredCount,
     totalCount,
+    includeArchived,
   ])
 
   // 自定义批量操作按钮

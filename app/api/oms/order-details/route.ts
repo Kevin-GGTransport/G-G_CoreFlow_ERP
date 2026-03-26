@@ -5,6 +5,10 @@ import {
   computeInboundOrderDetailDeliveryState,
   resolveAppointmentsFromOrderDetail,
 } from '@/lib/utils/inbound-delivery-progress'
+import {
+  mergeOrdersRelationExcludeArchived,
+  parseIncludeArchived,
+} from '@/lib/orders/order-visibility'
 
 /**
  * GET /api/oms/order-details
@@ -39,6 +43,15 @@ export async function GET(request: NextRequest) {
     const sort = searchParams.get('sort') || 'id'
     const order = searchParams.get('order') === 'asc' ? 'asc' : 'desc'
     const search = searchParams.get('search') || ''
+    const includeArchived = parseIncludeArchived(searchParams)
+
+    /** 列表内联填「实际板数」时，无库存行则 POST 创建批次需默认仓库 */
+    const defaultWarehouse = await prisma.warehouses.findFirst({
+      orderBy: { warehouse_id: 'asc' },
+      select: { warehouse_id: true },
+    })
+    const defaultWarehouseIdStr =
+      defaultWarehouse?.warehouse_id != null ? String(defaultWarehouse.warehouse_id) : null
 
     // 构建查询条件
     const where: any = {
@@ -161,7 +174,16 @@ export async function GET(request: NextRequest) {
         : limit
     const querySkip =
       hasIdsFilter || needsWideQuery ? undefined : (page - 1) * limit
-    
+
+    // 默认排除完成留档；按 ids 精确拉取时不过滤（预约等场景需拿到已选行）
+    if (!includeArchived && !(idsParam && idsParam.trim())) {
+      if (where.orders) {
+        where.orders = mergeOrdersRelationExcludeArchived(where.orders)
+      } else {
+        where.orders = mergeOrdersRelationExcludeArchived(undefined)
+      }
+    }
+
     const [items, total] = await Promise.all([
       prisma.order_detail.findMany({
         where,
@@ -240,10 +262,12 @@ export async function GET(request: NextRequest) {
 
     // 转换数据格式
     const transformedItems = items.map((item: any) => {
-      // 获取 inventory_lots 记录：优先取 pallet_count > 0 的记录，如果没有则取第一个
+      // 获取 inventory_lots：优先取已填实际板数（含 0）的记录，否则取第一条（可能为未填 null）
       const inventoryLots = item.inventory_lots || []
-      const ilWithPallets = inventoryLots.find((lot: any) => lot.pallet_count > 0)
-      const il = ilWithPallets || inventoryLots[0] || null
+      const ilWithValue = inventoryLots.find(
+        (lot: any) => lot.pallet_count !== null && lot.pallet_count !== undefined
+      )
+      const il = ilWithValue || inventoryLots[0] || null
       
       const ir = item.orders?.inbound_receipt || null
       const customer = item.orders?.customers || null
@@ -332,7 +356,10 @@ export async function GET(request: NextRequest) {
 
       return {
         id: String(item.id),
+        inventory_lot_id: il?.inventory_lot_id != null ? String(il.inventory_lot_id) : null,
         order_id: item.order_id ? String(item.order_id) : null,
+        inbound_receipt_id: ir?.inbound_receipt_id != null ? String(ir.inbound_receipt_id) : null,
+        default_warehouse_id: defaultWarehouseIdStr,
         order_number: item.orders?.order_number || null,
         operation_mode: item.orders?.operation_mode ?? null,
         customer_name: customer?.name || null,
@@ -342,7 +369,7 @@ export async function GET(request: NextRequest) {
         delivery_location_code,
         delivery_nature: item.delivery_nature,
         estimated_pallets: item.estimated_pallets || 0,
-        actual_pallets: il?.pallet_count || null,
+        actual_pallets: il?.pallet_count ?? null,
         remaining_pallets, // 已入库：与入库详情相同口径（预约实时）；未入库 null
         unbooked_pallets, // 已入库：与入库详情相同口径；未入库 预计-预约
         storage_location_code: il?.storage_location_code || null,

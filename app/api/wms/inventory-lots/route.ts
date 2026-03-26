@@ -7,6 +7,10 @@ import {
   computeInboundOrderDetailDeliveryState,
   resolveAppointmentsFromOrderDetail,
 } from '@/lib/utils/inbound-delivery-progress';
+import {
+  applyArchivedFilterToInventoryLotsWhere,
+  parseIncludeArchived,
+} from '@/lib/orders/order-visibility';
 import { inventoryLotConfig } from '@/lib/crud/configs/inventory-lots';
 import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-helper';
 import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generator';
@@ -207,6 +211,9 @@ export async function GET(request: NextRequest) {
                               (unbookedPalletCountFilter && unbookedPalletCountFilter !== '__all__') ||
                               (remainingPalletCountFilter && remainingPalletCountFilter !== '__all__');
 
+    // 默认排除完成留档订单关联的库存批次（?includeArchived=true 查看历史）
+    applyArchivedFilterToInventoryLotsWhere(where, parseIncludeArchived(searchParams));
+
     // 查询数据
     let items: any[];
     let total: number;
@@ -384,7 +391,7 @@ export async function GET(request: NextRequest) {
           appointment_detail_lines: validAppointmentLines,
         })
         const state = computeInboundOrderDetailDeliveryState({
-          lots: [{ pallet_count: serialized.pallet_count ?? 0 }],
+          lots: [{ pallet_count: serialized.pallet_count }],
           estimatedPallets: orderDetail?.estimated_pallets,
           appointments: appointmentsResolved,
         })
@@ -545,7 +552,8 @@ export async function POST(request: NextRequest) {
     const warehouseId = warehouse.warehouse_id;
 
     const orderDetailId = BigInt(data.order_detail_id);
-    const palletCount = typeof data.pallet_count === 'number' ? data.pallet_count : 1;
+    const palletCount: number | null =
+      data.pallet_count === undefined || data.pallet_count === null ? null : Number(data.pallet_count);
 
     const orderDetailForBase = await prisma.order_detail.findUnique({
       where: { id: orderDetailId },

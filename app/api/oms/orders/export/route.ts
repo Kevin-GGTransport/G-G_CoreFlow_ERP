@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { generateOrderExportExcel, OrderExportData } from '@/lib/utils/order-export-excel'
+import { ORDER_STATUS_ARCHIVED, parseIncludeArchived } from '@/lib/orders/order-visibility'
 
 /**
  * GET /api/oms/orders/export
@@ -46,9 +47,9 @@ export async function GET(request: NextRequest) {
       const status = searchParams.get('filter_status')
       if (status && status !== '__all__') {
         where.status = status
-      } else if (!searchParams.get('includeArchived')) {
+      } else if (!parseIncludeArchived(searchParams)) {
         // 默认排除"完成留档"状态
-        where.status = { not: 'archived' }
+        where.status = { not: ORDER_STATUS_ARCHIVED }
       }
 
       // 操作方式筛选

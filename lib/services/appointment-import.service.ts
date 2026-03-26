@@ -10,6 +10,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 import { BaseImportService } from './import/base-import.service'
 import { ImportConfig, ImportError } from './import/types'
 import {
@@ -258,7 +259,7 @@ const appointmentImportConfig: ImportConfig<AppointmentImportRow> = {
       if (!detailPalletsMap.has(orderDetailId)) {
         // 首次遇到这个订单明细，计算可用板数
         const inventory = inventoryMap.get(orderDetailId)
-        const hasInventory = inventory && inventory.pallet_count > 0
+        const hasInventory = !!inventory
         const order = ordersMap.get(row.order_number)
         const orderDetail = order.order_detail.find((od: any) => od.id === orderDetailId)
         
@@ -268,8 +269,11 @@ const appointmentImportConfig: ImportConfig<AppointmentImportRow> = {
         const alreadyBooked = bookedPalletsMap.get(orderDetailId) || 0
         let availablePallets: number
         if (hasInventory) {
-          // 已入库：实时计算 = pallet_count - 已预约板数之和（与订单明细管理逻辑一致）
-          availablePallets = Math.max(0, (inventory.pallet_count || 0) - alreadyBooked)
+          // 已入库：基准板数（null=按预计，0=按零）- 已预约板数之和
+          availablePallets = Math.max(
+            0,
+            basePalletCountForCalc(inventory!.pallet_count, orderDetail.estimated_pallets) - alreadyBooked
+          )
         } else {
           // 未入库：实时计算 = estimated_pallets - 已预约板数之和（允许负数，表示多约）
           availablePallets = (orderDetail.estimated_pallets || 0) - alreadyBooked
@@ -565,9 +569,10 @@ const appointmentImportConfig: ImportConfig<AppointmentImportRow> = {
 
               // 计算可用板数（用于快照）
               const inventory = inventoryMap.get(orderDetail.id)
-              const hasInventory = inventory && inventory.pallet_count > 0
+              const hasInventory = !!inventory
               const availablePallets = hasInventory
-                ? (inventory.unbooked_pallet_count ?? inventory.pallet_count)
+                ? (inventory!.unbooked_pallet_count ??
+                    basePalletCountForCalc(inventory!.pallet_count, orderDetail.estimated_pallets))
                 : (orderDetail.remaining_pallets ?? orderDetail.estimated_pallets ?? 0)
 
               const { recalcUnbookedRemainingForOrderDetail } = await import('./recalc-unbooked-remaining.service')

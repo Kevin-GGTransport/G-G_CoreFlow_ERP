@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkAuth } from '@/lib/api/helpers'
 import prisma from '@/lib/prisma'
+import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 
 /**
  * 定时任务：更新所有库存记录的剩余板数
  * 有效占用 = estimated_pallets - rejected_pallets
- * 剩余板数 = 实际板数 - 所有已过期预约的有效占用之和
+ * 剩余板数 = 基准板数 - 所有已到期预约的有效占用之和（基准：null=按预计板数，0=按零）
  * 判断已到期：与 lib/utils/inbound-delivery-progress 一致，confirmed_start 所在自然日 ≤ 当日（含当日）
  */
 export async function POST(request: NextRequest) {
@@ -27,6 +28,15 @@ export async function POST(request: NextRequest) {
         pallet_count: true,
       },
     })
+
+    const detailIds = [...new Set(inventoryLots.map((l) => l.order_detail_id))]
+    const orderDetails = await prisma.order_detail.findMany({
+      where: { id: { in: detailIds } },
+      select: { id: true, estimated_pallets: true },
+    })
+    const estimatedByDetailId = new Map(
+      orderDetails.map((d) => [d.id.toString(), d.estimated_pallets])
+    )
 
     let updatedCount = 0
     let errorCount = 0
@@ -53,7 +63,9 @@ export async function POST(request: NextRequest) {
           if (d <= today) return sum + effective(line.estimated_pallets, line.rejected_pallets)
           return sum
         }, 0)
-        const newRemainingPalletCount = lot.pallet_count - totalExpiredEffective
+        const est = estimatedByDetailId.get(lot.order_detail_id.toString()) ?? null
+        const base = basePalletCountForCalc(lot.pallet_count, est)
+        const newRemainingPalletCount = base - totalExpiredEffective
 
         // 更新库存记录
         await prisma.inventory_lots.update({
@@ -92,4 +104,3 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   return POST(request)
 }
-

@@ -1,14 +1,19 @@
 /**
  * 用于未约板数、剩余板数、送货进度等公式的「基准板数」：
- * 实际板数为 0 时按预计板数计算（尚未录入实际板数时避免用 0 导致未约为负、进度 100% 等异常）。
+ * - `null` / `undefined`：未录入实际板数 → 按订单明细「预计板数」作基准（与入库详情留空一致）。
+ * - `0`：明确录入为零 → 基准为 0，参与未约/剩余/进度计算。
+ * - 正整数：按实际值。
  */
 export function basePalletCountForCalc(
   palletCount: number | null | undefined,
   estimatedPallets: number | null | undefined
 ): number {
-  const pc = palletCount ?? 0
-  if (pc === 0) {
+  if (palletCount === null || palletCount === undefined) {
     return estimatedPallets ?? 0
   }
-  return pc
+  const n = Number(palletCount)
+  if (Number.isNaN(n)) {
+    return estimatedPallets ?? 0
+  }
+  return n
 }

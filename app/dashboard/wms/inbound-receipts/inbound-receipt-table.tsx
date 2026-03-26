@@ -16,6 +16,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { IncludeArchivedOrdersToggle } from "@/components/order-visibility/include-archived-toggle"
+
+const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {}
 
 /** 按 UTC 格式化为 YYYY-MM-DD */
 function formatDateUTC(d: Date): string {
@@ -89,6 +92,11 @@ export function InboundReceiptTable() {
   const router = useRouter()
   const [isSyncing, setIsSyncing] = React.useState(false)
   const [refreshKey, setRefreshKey] = React.useState(0)
+  const [includeArchived, setIncludeArchived] = React.useState(false)
+  const extraListParams = React.useMemo(
+    () => (includeArchived ? { includeArchived: "true" } : EMPTY_EXTRA_LIST_PARAMS),
+    [includeArchived]
+  )
   const [selectedInboundRows, setSelectedInboundRows] = React.useState<any[]>([])
 
   // 生成单据：合并为一份 PDF，只开一个标签页
@@ -451,30 +459,40 @@ export function InboundReceiptTable() {
   }, [])
 
   // 自定义工具栏按钮
-  const customToolbarButtons = React.useMemo(() => (
-    <div className="flex gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleSyncMissingRecords}
-        disabled={isSyncing || isFixingDates}
-        className="gap-2"
-      >
-        <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-        {isSyncing ? '同步中...' : '同步缺失记录'}
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleFixPlannedUnloadDates}
-        disabled={isSyncing || isFixingDates}
-        className="gap-2"
-      >
-        <RefreshCw className={`h-4 w-4 ${isFixingDates ? 'animate-spin' : ''}`} />
-        {isFixingDates ? '修复中...' : '修复拆柜日期'}
-      </Button>
-    </div>
-  ), [handleSyncMissingRecords, handleFixPlannedUnloadDates, isSyncing, isFixingDates])
+  const customToolbarButtons = React.useMemo(
+    () => (
+      <div className="flex flex-wrap items-center gap-3">
+        <IncludeArchivedOrdersToggle
+          checked={includeArchived}
+          onCheckedChange={setIncludeArchived}
+          id="inbound-receipts-include-archived"
+        />
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSyncMissingRecords}
+            disabled={isSyncing || isFixingDates}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? '同步中...' : '同步缺失记录'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleFixPlannedUnloadDates}
+            disabled={isSyncing || isFixingDates}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFixingDates ? 'animate-spin' : ''}`} />
+            {isFixingDates ? '修复中...' : '修复拆柜日期'}
+          </Button>
+        </div>
+      </div>
+    ),
+    [handleSyncMissingRecords, handleFixPlannedUnloadDates, isSyncing, isFixingDates, includeArchived]
+  )
 
   // 快速筛选区：周一～周日（拆柜日期）+ 显示当天/明天/本周/本月/已放柜子
   const weekdayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -545,6 +563,7 @@ export function InboundReceiptTable() {
       fieldFuzzyLoadOptions={fieldFuzzyLoadOptions}
       customToolbarButtons={customToolbarButtons}
       customFilterContent={customFilterContent}
+      extraListParams={extraListParams}
       onRowSelectionChange={setSelectedInboundRows}
       customBatchActions={customBatchActions}
     />

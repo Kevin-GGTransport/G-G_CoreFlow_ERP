@@ -27,9 +27,40 @@ import { Copy, CalendarPlus, CalendarCheck } from "lucide-react"
 import { toast } from "sonner"
 import { NewAppointmentDialog } from "./new-appointment-dialog"
 import { AddToExistingAppointmentDialog } from "./add-to-existing-appointment-dialog"
+import { IncludeArchivedOrdersToggle } from "@/components/order-visibility/include-archived-toggle"
+import { ActualPalletsInlineCell } from "./actual-pallets-inline-cell"
+
+const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {}
+
+/** 关闭通用行内编辑（避免误调不存在的 /api/oms/order-details/:id）；实际板数用专用内联格 */
+const orderDetailListConfig = {
+  ...orderDetailConfig,
+  list: {
+    ...orderDetailConfig.list,
+    inlineEdit: { enabled: false as const },
+  },
+}
 
 export function OrderDetailTable() {
   const router = useRouter();
+  const [includeArchived, setIncludeArchived] = React.useState(false)
+  const [tableRefreshKey, setTableRefreshKey] = React.useState(0)
+  const extraListParams = React.useMemo(
+    () => (includeArchived ? { includeArchived: "true" } : EMPTY_EXTRA_LIST_PARAMS),
+    [includeArchived]
+  )
+
+  const customCellRenderers = React.useMemo(
+    () => ({
+      actual_pallets: ({ row }: { row: { original: Record<string, unknown> } }) => (
+        <ActualPalletsInlineCell
+          row={row.original as any}
+          onSaved={() => setTableRefreshKey((k) => k + 1)}
+        />
+      ),
+    }),
+    []
+  )
   const [selectedRows, setSelectedRows] = React.useState<any[]>([]);
   const [newAppointmentOpen, setNewAppointmentOpen] = React.useState(false);
   const [addToExistingAppointmentOpen, setAddToExistingAppointmentOpen] = React.useState(false);
@@ -673,10 +704,20 @@ export function OrderDetailTable() {
   return (
     <>
     <EntityTable
-      config={orderDetailConfig}
+      config={orderDetailListConfig}
+      refreshKey={tableRefreshKey}
+      customCellRenderers={customCellRenderers}
       customClickableColumns={customClickableColumns}
       customActions={customActions}
       customBatchActions={customBatchActions}
+      customToolbarButtons={
+        <IncludeArchivedOrdersToggle
+          checked={includeArchived}
+          onCheckedChange={setIncludeArchived}
+          id="order-details-include-archived"
+        />
+      }
+      extraListParams={extraListParams}
       onRowSelectionChange={setSelectedRows}
       expandableRows={{
         enabled: true,

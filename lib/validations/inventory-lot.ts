@@ -6,7 +6,8 @@ export const inventoryLotCreateSchema = z.object({
   warehouse_id: z.string().min(1, '仓库ID不能为空'),
   inbound_receipt_id: z.string().optional().nullable(),
   storage_location_code: z.string().max(100, '位置代码不能超过100个字符').optional().nullable(),
-  pallet_count: z.number().int().min(0, '实际板数不能为负数').default(1),
+  // null/省略 = 未填实际板数（计算时按预计）；0 = 明确为零
+  pallet_count: z.union([z.number().int().min(0, '实际板数不能为负数'), z.null()]).optional(),
   remaining_pallet_count: z.number().int().min(0, '剩余板数不能为负数').optional().nullable().default(0),
   unbooked_pallet_count: z.number().int().min(0, '未约板数不能为负数').optional().nullable().default(0),
   delivery_progress: z.number().min(0).max(100).optional().nullable(),
@@ -24,7 +25,7 @@ export const inventoryLotUpdateSchema = z.object({
   warehouse_id: z.string().min(1).optional(),
   inbound_receipt_id: z.string().optional().nullable(),
   storage_location_code: z.string().max(100).optional().nullable(),
-  // null = 前端明确清空实际板数（入库详情留空），服务端写入 0
+  // null = 未填实际板数（入库详情留「-」），服务端存 null；0 = 明确为零
   pallet_count: z
     .union([z.number().int().min(0, '实际板数不能为负数'), z.null()])
     .optional(),

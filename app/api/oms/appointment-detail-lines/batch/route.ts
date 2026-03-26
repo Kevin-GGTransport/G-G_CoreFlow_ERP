@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
+import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 
 const MAX_LINES = 50
 
@@ -94,17 +95,15 @@ export async function POST(request: NextRequest) {
           0
         )
 
-        let totalPalletsAtTime: number
-        if (inventoryLot && inventoryLot.pallet_count > 0) {
-          totalPalletsAtTime = inventoryLot.pallet_count - totalEffectiveBooked
-        } else {
-          const orderDetail = await tx.order_detail.findUnique({
-            where: { id: orderDetailId },
-            select: { estimated_pallets: true },
-          })
-          const est = orderDetail?.estimated_pallets ?? 0
-          totalPalletsAtTime = est - totalEffectiveBooked
-        }
+        const orderDetailForCap = await tx.order_detail.findUnique({
+          where: { id: orderDetailId },
+          select: { estimated_pallets: true },
+        })
+        const estCap = orderDetailForCap?.estimated_pallets ?? 0
+        const baseCap = inventoryLot
+          ? basePalletCountForCalc(inventoryLot.pallet_count, orderDetailForCap?.estimated_pallets)
+          : estCap
+        const totalPalletsAtTime = baseCap - totalEffectiveBooked
 
         if (estimated_pallets > totalPalletsAtTime) {
           throw new Error(

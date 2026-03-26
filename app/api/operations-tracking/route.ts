@@ -8,6 +8,7 @@ import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
 import { computeInboundReceiptHeaderDeliveryProgress } from "@/lib/utils/inbound-delivery-progress"
 import { serializeBigInt } from "@/lib/api/helpers"
+import { ordersWhereRootExcludeArchived, parseIncludeArchived } from "@/lib/orders/order-visibility"
 
 // 计算天数差（日期1 - 日期2，只比较日期部分，忽略时间）
 function calculateDays(date1: Date | string | null, date2: Date | string | null): number | null {
@@ -197,6 +198,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 默认排除完成留档（?includeArchived=true 查看历史）
+    if (!parseIncludeArchived(searchParams)) {
+      Object.assign(where, ordersWhereRootExcludeArchived())
+    }
+
     // 查询订单及其关联数据
     const [orders, total] = await Promise.all([
       prisma.orders.findMany({
@@ -360,9 +366,15 @@ export async function GET(request: NextRequest) {
 
         // 拆柜板数（汇总所有 inventory_lots 的 pallet_count，与入库管理详情中的实际板数一致）
         // 注意：这里汇总的是所有 inventory_lots 的 pallet_count，对应入库管理详情页中显示的实际板数
-        const unloadPallets = detail.inventory_lots && detail.inventory_lots.length > 0
-          ? detail.inventory_lots.reduce((sum: number, lot: any) => sum + (lot.pallet_count || 0), 0)
-          : null
+        const lots = detail.inventory_lots || []
+        const unloadPallets =
+          lots.length === 0
+            ? null
+            : lots.length === 1
+              ? (lots[0].pallet_count ?? null)
+              : lots.some((lot: any) => lot.pallet_count === null || lot.pallet_count === undefined)
+                ? null
+                : lots.reduce((sum: number, lot: any) => sum + Number(lot.pallet_count), 0)
 
         // 剩余板数
         const remainingPallets = detail.remaining_pallets

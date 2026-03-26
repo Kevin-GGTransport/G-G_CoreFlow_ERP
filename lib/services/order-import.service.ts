@@ -200,11 +200,14 @@ const orderImportConfig: ImportConfig<OrderImportRow> = {
       }
     }
 
-    // 第5步：检查订单号是否已存在于数据库
+    // 第5步：检查订单号是否与「未完成留档」的订单冲突（仅 archived 的同号可再次导入）
     if (errors.length === 0) {
       const orderNumbers = Array.from(orderGroups.keys())
       const existingOrders = await prisma.orders.findMany({
-        where: { order_number: { in: orderNumbers } },
+        where: {
+          order_number: { in: orderNumbers },
+          NOT: { status: 'archived' },
+        },
         select: { order_number: true },
       })
 
@@ -215,7 +218,7 @@ const orderImportConfig: ImportConfig<OrderImportRow> = {
           errors.push({
             row: firstRow.rowIndex,
             field: 'order_number',
-            message: `订单号"${orderNumber}"已存在，请勿重复导入`,
+            message: `订单号"${orderNumber}"已存在（未完成留档），请勿重复导入`,
           })
         })
       }

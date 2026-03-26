@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma'
 import { deliveryManagementConfig } from '@/lib/crud/configs/delivery-management'
 import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-helper'
 import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generator'
+import { applyArchivedFilterToDeliveryManagementWhere, parseIncludeArchived } from '@/lib/orders/order-visibility'
 
 // GET - 获取送仓管理列表
 export async function GET(request: NextRequest) {
@@ -153,6 +154,9 @@ export async function GET(request: NextRequest) {
         where.delivery_appointments = searchCondition
       }
     }
+
+    // 默认排除完成留档订单关联的送仓记录（?includeArchived=true 查看历史）
+    applyArchivedFilterToDeliveryManagementWhere(where, parseIncludeArchived(searchParams))
 
     // 查询总数
     const total = await prisma.delivery_management.count({ where })

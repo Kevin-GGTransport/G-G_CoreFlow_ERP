@@ -8,6 +8,10 @@ import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-
 import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generator';
 import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date';
 import { computeInboundReceiptHeaderDeliveryProgress } from '@/lib/utils/inbound-delivery-progress';
+import {
+  applyArchivedFilterToInboundReceiptWhere,
+  parseIncludeArchived,
+} from '@/lib/orders/order-visibility';
 
 // GET - 获取拆柜规划列表（使用统一框架，但需要自定义处理关联数据）
 export async function GET(request: NextRequest) {
@@ -299,6 +303,9 @@ export async function GET(request: NextRequest) {
       if (!prisma.inbound_receipt) {
         throw new Error('Prisma 客户端未找到 inbound_receipt 模型，请运行 npx prisma generate');
       }
+
+      // 默认排除完成留档订单（?includeArchived=true 查看历史）
+      applyArchivedFilterToInboundReceiptWhere(where, parseIncludeArchived(searchParams));
 
       // 先测试基本查询
       const queryOptions: any = {

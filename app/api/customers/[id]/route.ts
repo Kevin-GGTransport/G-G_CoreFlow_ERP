@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkAuth, checkPermission, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
 import { customerUpdateSchema } from '@/lib/validations/customer';
 import prisma from '@/lib/prisma';
+import { mergeOrdersRelationExcludeArchived, parseIncludeArchived } from '@/lib/orders/order-visibility';
 
 /**
  * GET /api/customers/:id
@@ -18,6 +19,7 @@ export async function GET(
 
     // 处理 params（Next.js 15 中 params 可能是 Promise）
     const resolvedParams = await params;
+    const includeArchived = parseIncludeArchived(new URL(request.url).searchParams);
 
     const customer = await prisma.customers.findUnique({
       where: { id: BigInt(resolvedParams.id) },
@@ -26,6 +28,7 @@ export async function GET(
         orders: {
           take: 10,
           orderBy: { order_date: 'desc' },
+          ...(includeArchived ? {} : { where: mergeOrdersRelationExcludeArchived(undefined) }),
           select: {
             order_id: true,
             order_number: true,

@@ -19,10 +19,18 @@ import { formatDate, formatDateTime } from '@/lib/utils'
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { toast } from "sonner"
+import { IncludeArchivedOrdersToggle } from "@/components/order-visibility/include-archived-toggle"
+
+const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {}
 
 export function InventoryLotTable() {
   const router = useRouter();
   const [isRecalculating, setIsRecalculating] = React.useState(false);
+  const [includeArchived, setIncludeArchived] = React.useState(false)
+  const extraListParams = React.useMemo(
+    () => (includeArchived ? { includeArchived: "true" } : EMPTY_EXTRA_LIST_PARAMS),
+    [includeArchived]
+  )
   
   const customClickableColumns: ClickableColumnConfig<any>[] = React.useMemo(() => [
     {
@@ -169,17 +177,27 @@ export function InventoryLotTable() {
   }, [])
 
   // 自定义工具栏按钮
-  const customToolbarButtons = React.useMemo(() => (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleRecalculatePallets}
-      disabled={isRecalculating}
-    >
-      <RefreshCw className={`mr-2 h-4 w-4 ${isRecalculating ? "animate-spin" : ""}`} />
-      {isRecalculating ? "计算中..." : "重新计算板数"}
-    </Button>
-  ), [handleRecalculatePallets, isRecalculating])
+  const customToolbarButtons = React.useMemo(
+    () => (
+      <div className="flex flex-wrap items-center gap-3">
+        <IncludeArchivedOrdersToggle
+          checked={includeArchived}
+          onCheckedChange={setIncludeArchived}
+          id="inventory-lots-include-archived"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRecalculatePallets}
+          disabled={isRecalculating}
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${isRecalculating ? "animate-spin" : ""}`} />
+          {isRecalculating ? "计算中..." : "重新计算板数"}
+        </Button>
+      </div>
+    ),
+    [handleRecalculatePallets, isRecalculating, includeArchived]
+  )
 
   return (
     <EntityTable
@@ -187,6 +205,7 @@ export function InventoryLotTable() {
       customClickableColumns={customClickableColumns}
       customActions={customActions}
       customToolbarButtons={customToolbarButtons}
+      extraListParams={extraListParams}
       expandableRows={{
         enabled: true,
         getExpandedContent: (row: any) => {
