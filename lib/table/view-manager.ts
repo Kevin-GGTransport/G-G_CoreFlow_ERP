@@ -292,7 +292,8 @@ export async function setDefaultView(
   viewId: string
 ): Promise<void> {
   try {
-    const response = await fetch(`/api/table-views/${viewId}/default`, {
+    // 必须与 app/api/table-views/[id]/route.ts 中 PATCH 的路径一致（无 /default 子路径）
+    const response = await fetch(`/api/table-views/${viewId}`, {
       method: 'PATCH',
     })
     

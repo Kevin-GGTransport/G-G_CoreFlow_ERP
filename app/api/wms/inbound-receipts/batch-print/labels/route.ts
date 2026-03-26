@@ -3,7 +3,7 @@
  * 批量生成 Label，返回合并后的单份 PDF（多页）
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission } from '@/lib/api/helpers'
+import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS } from '@/lib/api/helpers'
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts'
 import { mergePdfBuffers } from '@/lib/services/print/merge-pdf'
 import { getLabelsPdfBuffer } from '../../get-inbound-print-buffer'
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const authResult = await checkAuth()
     if (authResult.error) return authResult.error
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list)
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS)
     if (permissionResult.error) return permissionResult.error
 
     const idsParam = request.nextUrl.searchParams.get('ids')

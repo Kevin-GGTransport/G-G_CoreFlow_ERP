@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkPermission } from '@/lib/api/helpers';
+import { checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS } from '@/lib/api/helpers';
 import prisma from '@/lib/prisma';
 import { generateUnloadBillExportExcel, UnloadBillExportRow } from '@/lib/utils/unload-bill-export-excel';
 
@@ -11,7 +11,7 @@ const ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_o
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(ROLES);
+    const permissionResult = await checkPermission(ROLES, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const { searchParams } = new URL(request.url);

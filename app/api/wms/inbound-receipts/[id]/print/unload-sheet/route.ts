@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission, handleError } from '@/lib/api/helpers'
+import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleError } from '@/lib/api/helpers'
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts'
 import { mergePdfBuffers } from '@/lib/services/print/merge-pdf'
 import { generateUnloadSheetPDF } from '@/lib/services/print/unload-sheet.service'
@@ -31,7 +31,7 @@ export async function GET(
     const authResult = await checkAuth()
     if (authResult.error) return authResult.error
 
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list)
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS)
     if (permissionResult.error) return permissionResult.error
 
     resolvedParams = await params

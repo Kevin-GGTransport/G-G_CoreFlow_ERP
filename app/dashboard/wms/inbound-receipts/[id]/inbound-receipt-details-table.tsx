@@ -17,10 +17,7 @@ import { ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react"
 import Link from "next/link"
 // 移除 Dialog 导入，改用内联编辑
 import { toast } from "sonner"
-import {
-  computeInboundOrderDetailDeliveryState,
-  getTotalExpiredEffectivePallets,
-} from "@/lib/utils/inbound-delivery-progress"
+import { computeInboundOrderDetailDeliveryState } from "@/lib/utils/inbound-delivery-progress"
 
 interface OrderDetail {
   id: string
@@ -184,40 +181,16 @@ export function InboundReceiptDetailsTable({
       rejected_pallets: a.rejected_pallets ?? 0,
     }))
 
-    // 剩余/未约以 DB 为准（与 PUT 清空实际板数后重算一致）；勿用仅按 pallet_count+预计 的客户端公式，否则清空实数后剩余板数仍像「按预计」不变
-    const totalRemainingPalletCount = lots.reduce(
-      (sum, lot) => sum + (Number(lot.remaining_pallet_count) || 0),
-      0
-    )
-    const totalUnbookedPalletCount = lots.reduce(
-      (sum, lot) => sum + (Number(lot.unbooked_pallet_count) || 0),
-      0
-    )
-
-    const totalExpiredEffectivePallets = getTotalExpiredEffectivePallets(appointmentInputs)
-
-    let avgDeliveryProgress: number | null
-    if (lots.length === 1) {
-      const totalBase = totalRemainingPalletCount + totalExpiredEffectivePallets
-      if (totalBase > 0) {
-        if (totalRemainingPalletCount === 0) {
-          avgDeliveryProgress = 100
-        } else {
-          const shipped = totalBase - totalRemainingPalletCount
-          avgDeliveryProgress = Math.round((shipped / totalBase) * 100 * 100) / 100
-          avgDeliveryProgress = Math.max(0, Math.min(100, avgDeliveryProgress))
-        }
-      } else {
-        avgDeliveryProgress = 0
-      }
-    } else {
-      const state = computeInboundOrderDetailDeliveryState({
-        lots: lots.map((l) => ({ pallet_count: l.pallet_count })),
-        estimatedPallets: detail?.estimated_pallets,
-        appointments: appointmentInputs,
-      })
-      avgDeliveryProgress = state?.deliveryProgress ?? null
-    }
+    // 与订单明细 API（/api/oms/order-details）一致：已入库行统一用 computeInboundOrderDetailDeliveryState
+    // （基准板数 + 已到期预约有效板数），避免单批次时「DB remaining + 过期预约」混合算法与订单明细 100% / 详情 50% 不一致
+    const state = computeInboundOrderDetailDeliveryState({
+      lots: lots.map((l) => ({ pallet_count: l.pallet_count })),
+      estimatedPallets: detail?.estimated_pallets,
+      appointments: appointmentInputs,
+    })
+    const totalRemainingPalletCount = state?.totalRemainingPalletCount ?? 0
+    const totalUnbookedPalletCount = state?.totalUnbookedPalletCount ?? 0
+    const avgDeliveryProgress: number | null = state?.deliveryProgress ?? null
 
     // 合并备注（取第一个非空的）
     const unloadTransferNotes = lots.find(lot => lot.unload_transfer_notes)?.unload_transfer_notes || null

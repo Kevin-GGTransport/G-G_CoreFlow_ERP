@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission, handleError } from '@/lib/api/helpers'
+import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleError } from '@/lib/api/helpers'
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts'
 import { generateLabelsPDF } from '@/lib/services/print/label.service'
 import { getLabelSecondRowAndBarcode } from '@/lib/services/print/label-utils'
@@ -24,7 +24,7 @@ export async function GET(
     const authResult = await checkAuth()
     if (authResult.error) return authResult.error
 
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list)
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS)
     if (permissionResult.error) return permissionResult.error
 
     resolvedParams = await params

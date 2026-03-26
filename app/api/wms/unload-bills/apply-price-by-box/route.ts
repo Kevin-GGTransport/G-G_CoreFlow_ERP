@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkPermission } from '@/lib/api/helpers';
+import { checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS } from '@/lib/api/helpers';
 import prisma from '@/lib/prisma';
 
 const ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_operator', 'wms_operator'];
@@ -12,7 +12,7 @@ const BOX_THRESHOLD = 1200;
 /** POST 对指定入库单按箱数批量填入价格（>1200 箱=220，否则=200） */
 export async function POST(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(ROLES);
+    const permissionResult = await checkPermission(ROLES, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const body = await request.json();

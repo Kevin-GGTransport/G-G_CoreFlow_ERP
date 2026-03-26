@@ -162,12 +162,6 @@ export async function GET(request: NextRequest) {
         ? (inventoryLot.unbooked_pallet_count ?? inventoryLot.pallet_count)
         : (orderDetail.remaining_pallets ?? orderDetail.estimated_pallets ?? 0)
 
-      if (hasInventory) {
-        console.log(`[appointment-detail-lines] 已入库仓点 order_detail_id=${line.order_detail_id}: pallet_count=${inventoryLot.pallet_count}, unbooked_pallet_count=${inventoryLot.unbooked_pallet_count}, totalPallets=${totalPallets}`)
-      } else {
-        console.log(`[appointment-detail-lines] 未入库仓点 order_detail_id=${line.order_detail_id}: remaining_pallets=${orderDetail.remaining_pallets}, estimated_pallets=${orderDetail.estimated_pallets}, totalPallets=${totalPallets}`)
-      }
-
       serializedLines.push({
         id: serialized.id,
         appointment_id: serialized.appointment_id,

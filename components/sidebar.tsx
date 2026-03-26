@@ -39,6 +39,7 @@ import {
   Wallet,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { isWmsFullAccessUsername } from "@/lib/auth/wms-full-access-users"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -46,6 +47,7 @@ import { useState, useEffect, useMemo } from "react"
 
 interface SidebarProps {
   userRole?: string
+  username?: string | null
 }
 
 interface MenuItem {
@@ -55,6 +57,8 @@ interface MenuItem {
   badge?: string | number
   children?: MenuItem[]
   roles?: string[] // 允许访问的角色
+  /** 标记为 WMS 子树，供白名单登录名（如 lin）仅放开仓库模块菜单 */
+  menuGroup?: "wms"
 }
 
 // 菜单项定义（移到组件外部）
@@ -165,6 +169,7 @@ const menuItems: MenuItem[] = [
   {
     title: "仓库管理 (WMS)",
     icon: Warehouse,
+    menuGroup: "wms",
     roles: ["admin", "wms_manager", "tms_manager", "employee", "user", "oms_operator", "wms_operator"], // 操作部门和仓库部门都可以访问
     children: [
       {
@@ -366,7 +371,8 @@ function findActiveMenuItems(items: MenuItem[], pathname: string): string[] {
   return activeItems
 }
 
-export function Sidebar({ userRole = "user" }: SidebarProps) {
+export function Sidebar({ userRole = "user", username }: SidebarProps) {
+  const wmsFullAccessUser = isWmsFullAccessUsername(username)
   const pathname = usePathname()
   const router = useRouter()
   
@@ -438,10 +444,11 @@ export function Sidebar({ userRole = "user" }: SidebarProps) {
     }
   }
 
-  // 检查用户是否有权限访问菜单项
-  const hasPermission = (roles?: string[]) => {
-    if (!roles || roles.length === 0) return true
-    return roles.includes(userRole)
+  const menuAllows = (roles: string[] | undefined, inWmsBranch: boolean) => {
+    if (!roles?.length) return true
+    if (roles.includes(userRole)) return true
+    if (wmsFullAccessUser && inWmsBranch) return true
+    return false
   }
 
   // 切换菜单展开/收起
@@ -458,12 +465,17 @@ export function Sidebar({ userRole = "user" }: SidebarProps) {
     })
   }
 
-  const renderMenuItem = (item: MenuItem, level: number = 0) => {
-    // 在函数内部处理点击事件，使用闭包访问 router
-    if (!hasPermission(item.roles)) return null
+  const renderMenuItem = (item: MenuItem, level: number = 0, inWmsBranch = false) => {
+    const branch = inWmsBranch || item.menuGroup === "wms"
 
     const isActive = item.href ? isPathActive(item.href, pathname) : false
     const hasChildren = item.children && item.children.length > 0
+
+    if (hasChildren) {
+      if (!menuAllows(item.roles, branch)) return null
+    } else if (!menuAllows(item.roles, branch)) {
+      return null
+    }
     const isOpen = openMenus.includes(item.title)
     
     // 检查是否有子项处于激活状态（含详情页等子路径）
@@ -503,7 +515,7 @@ export function Sidebar({ userRole = "user" }: SidebarProps) {
             />
           </CollapsibleTrigger>
           <CollapsibleContent className="space-y-1 mt-1">
-            {item.children?.map((child) => renderMenuItem(child, level + 1))}
+            {item.children?.map((child) => renderMenuItem(child, level + 1, branch))}
           </CollapsibleContent>
         </Collapsible>
       )

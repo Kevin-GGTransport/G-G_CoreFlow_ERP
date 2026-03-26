@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createListHandler } from '@/lib/crud/api-handler';
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts';
-import { checkPermission, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
+import { checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
 import { inboundReceiptCreateSchema } from '@/lib/validations/inbound-receipt';
 import prisma from '@/lib/prisma';
 import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-helper';
@@ -12,7 +12,7 @@ import { computeInboundReceiptHeaderDeliveryProgress } from '@/lib/utils/inbound
 // GET - 获取拆柜规划列表（使用统一框架，但需要自定义处理关联数据）
 export async function GET(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list);
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const { searchParams } = new URL(request.url);
@@ -504,16 +504,6 @@ export async function GET(request: NextRequest) {
       resultItems = resultItems.slice((page - 1) * limit, page * limit);
     }
 
-    // 调试：检查第一条数据的 container_number
-    if (resultItems.length > 0 && process.env.NODE_ENV === 'development') {
-      console.log('第一条拆柜规划数据:', {
-        inbound_receipt_id: resultItems[0].inbound_receipt_id,
-        container_number: resultItems[0].container_number,
-        order_id: resultItems[0].order_id,
-        order: resultItems[0].orders,
-      });
-    }
-
     return NextResponse.json({
       data: resultItems,
       pagination: {
@@ -557,7 +547,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.create);
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.create, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
     const currentUser = permissionResult.user;
 

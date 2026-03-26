@@ -94,30 +94,62 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 有 LFD、尚未填提柜日期（与前端「LFD待提柜」按钮一致）
+    if (searchParams.get('lfd_no_pickup') === '1') {
+      const lfdPickupFilter = {
+        lfd_date: { not: null },
+        pickup_date: null,
+      }
+      if (where.orders) {
+        where.orders = { AND: [where.orders, lfdPickupFilter] }
+      } else {
+        where.orders = lfdPickupFilter
+      }
+    }
+
     // 查询总数
     const total = await prisma.pickup_management.count({ where })
 
     // 构建排序条件
     let orderBy: any
-    
-    // 判断排序字段是来自主表还是 orders 表
-    const mainTableFields = ['pickup_id', 'pickup_out', 'report_empty', 'return_empty', 'notes', 'current_location', 'port_text', 'shipping_line', 'driver_id', 'driver_name', 'created_at', 'updated_at']
-    
-    // earliest_appointment_time 特殊处理：优先使用 orders.appointment_time 排序
-    if (sort === 'earliest_appointment_time') {
-      orderBy = {
-        orders: {
-          appointment_time: order
-        }
-      }
-    } else if (mainTableFields.includes(sort)) {
-      // 主表字段直接排序
-      orderBy = { [sort]: order }
+
+    if (searchParams.get('lfd_no_pickup') === '1') {
+      // LFD 升序；同日 LFD 按最早预约时间（pickup_management.earliest_appointment_time）升序
+      orderBy = [
+        { orders: { lfd_date: 'asc' } },
+        { earliest_appointment_time: 'asc' },
+      ]
     } else {
-      // orders 表字段使用嵌套排序
-      orderBy = {
-        orders: {
-          [sort]: order
+      // 判断排序字段是来自主表还是 orders 表
+      const mainTableFields = [
+        'pickup_id',
+        'pickup_out',
+        'report_empty',
+        'return_empty',
+        'notes',
+        'current_location',
+        'port_text',
+        'shipping_line',
+        'driver_id',
+        'driver_name',
+        'created_at',
+        'updated_at',
+      ]
+
+      // earliest_appointment_time 特殊处理：优先使用 orders.appointment_time 排序
+      if (sort === 'earliest_appointment_time') {
+        orderBy = {
+          orders: {
+            appointment_time: order,
+          },
+        }
+      } else if (mainTableFields.includes(sort)) {
+        orderBy = { [sort]: order }
+      } else {
+        orderBy = {
+          orders: {
+            [sort]: order,
+          },
         }
       }
     }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkAuth, checkPermission, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
+import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
 import { inboundReceiptUpdateSchema } from '@/lib/validations/inbound-receipt';
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts';
 import prisma from '@/lib/prisma';
@@ -165,7 +165,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.update);
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.update, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
     const currentUser = permissionResult.user;
 
@@ -322,7 +322,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.delete);
+    const permissionResult = await checkPermission(inboundReceiptConfig.permissions.delete, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const resolvedParams = await params;

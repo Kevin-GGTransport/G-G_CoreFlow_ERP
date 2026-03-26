@@ -10,7 +10,8 @@ import { EntityTable } from "@/components/crud/entity-table"
 import { pickupManagementConfig } from "@/lib/crud/configs/pickup-management"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, Copy, FileText, Mail, Download, FileSpreadsheet, Database, Upload } from "lucide-react"
+import { RefreshCw, Copy, FileText, Mail, Download, FileSpreadsheet, Database, Upload, CalendarClock } from "lucide-react"
+import { useRouter, usePathname } from "next/navigation"
 import type { FuzzySearchOption } from "@/components/ui/fuzzy-search-select"
 import {
   DropdownMenu,
@@ -28,6 +29,9 @@ import {
 } from "@/lib/utils/pickup-management-excel-template"
 
 export function PickupManagementClient() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const [lfdNoPickupActive, setLfdNoPickupActive] = React.useState(false)
   const [isInitializing, setIsInitializing] = React.useState(false)
   const [isSyncing, setIsSyncing] = React.useState(false)
   const [isSyncingAppointment, setIsSyncingAppointment] = React.useState(false)
@@ -41,6 +45,35 @@ export function PickupManagementClient() {
   const [totalCount, setTotalCount] = React.useState(0)
   const [filteredCount, setFilteredCount] = React.useState(0)
   const [importDialogOpen, setImportDialogOpen] = React.useState(false)
+  // 首次挂载时从 URL 恢复「待提柜」状态（勿在 refreshKey 上重复读 URL，否则会在 router.replace 生效前把状态盖掉，导致要点两次）
+  React.useLayoutEffect(() => {
+    if (typeof window === "undefined") return
+    const q = new URLSearchParams(window.location.search)
+    setLfdNoPickupActive(q.get("lfd_no_pickup") === "1")
+  }, [])
+
+  const extraListParams = React.useMemo((): Record<string, string> => {
+    return lfdNoPickupActive ? { lfd_no_pickup: "1" } : {}
+  }, [lfdNoPickupActive])
+
+  const toggleLfdNoPickup = React.useCallback(() => {
+    const next = !lfdNoPickupActive
+    const params = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : ""
+    )
+    if (next) {
+      params.set("lfd_no_pickup", "1")
+      params.set("sort", "lfd_date")
+      params.set("order", "asc")
+      params.set("page", "1")
+    } else {
+      params.delete("lfd_no_pickup")
+    }
+    setLfdNoPickupActive(next)
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [lfdNoPickupActive, pathname, router])
+
   // 用于追踪勾选顺序的状态
   const [orderedSelectedRows, setOrderedSelectedRows] = React.useState<any[]>([])
   const selectedIdsRef = React.useRef<Set<string>>(new Set())
@@ -471,11 +504,29 @@ export function PickupManagementClient() {
       })
   }, [orderedSelectedRows])
 
+  /** 放在「快速筛选」一行：有 LFD、无提柜日期 */
+  const customFilterContent = React.useCallback(
+    () => (
+      <Button
+        type="button"
+        variant={lfdNoPickupActive ? "default" : "outline"}
+        size="sm"
+        className="h-9 shrink-0 gap-1.5"
+        onClick={toggleLfdNoPickup}
+        title="已填 LFD、尚未填提柜日期；按 LFD 升序，相同 LFD 按最早预约时间升序"
+      >
+        <CalendarClock className="h-4 w-4" />
+        待提柜
+      </Button>
+    ),
+    [lfdNoPickupActive, toggleLfdNoPickup]
+  )
+
   // 自定义工具栏按钮：第一行两个同步按钮，第二行批量导出 + 批量导入（与订单/预约管理 UI 一致）
   const customToolbarButtons = React.useMemo(() => {
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -679,6 +730,7 @@ export function PickupManagementClient() {
         <EntityTable 
           key={refreshKey}
           config={pickupManagementConfig}
+          extraListParams={extraListParams}
           fieldFuzzyLoadOptions={{
             carrier: loadCarrierOptions,
             carrier_id: loadCarrierOptions,
@@ -687,6 +739,7 @@ export function PickupManagementClient() {
           customActions={{
             onView: null, // 禁用查看详情功能
           }}
+          customFilterContent={customFilterContent}
           customToolbarButtons={customToolbarButtons}
           customBatchActions={customBatchActions}
           onRowSelectionChange={setSelectedRows}

@@ -2,7 +2,7 @@
  * 单个表格视图配置 API
  * PUT /api/table-views/:id - 更新视图
  * DELETE /api/table-views/:id - 删除视图
- * PATCH /api/table-views/:id/default - 设置为默认视图
+ * PATCH /api/table-views/:id - 设置为默认视图
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -174,8 +174,8 @@ export async function DELETE(
 }
 
 /**
- * PATCH /api/table-views/:id/default
- * 设置为默认视图
+ * PATCH /api/table-views/:id
+ * 设置为默认视图（勿使用 /default 子路径，否则 Next 会 404）
  */
 export async function PATCH(
   request: NextRequest,

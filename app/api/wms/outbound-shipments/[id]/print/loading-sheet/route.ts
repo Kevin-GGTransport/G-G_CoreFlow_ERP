@@ -4,7 +4,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission } from '@/lib/api/helpers'
+import {
+  checkAuth,
+  checkPermission,
+  WMS_FULL_ACCESS_PERMISSION_OPTIONS,
+  serializeBigInt,
+} from '@/lib/api/helpers'
 import { outboundShipmentConfig } from '@/lib/crud/configs/outbound-shipments'
 import { getOutboundShipmentDetail } from '@/lib/services/outbound-shipment-detail'
 import { generateLoadingSheetPDF } from '@/lib/services/print/loading-sheet.service'
@@ -12,7 +17,6 @@ import { resolveLogoDataUrl } from '@/lib/services/print/resolve-logo'
 import type { OAKLoadSheetData } from '@/lib/services/print/types'
 import { formatDate } from '@/lib/services/print/print-templates'
 import prisma from '@/lib/prisma'
-import { serializeBigInt } from '@/lib/api/helpers'
 
 export async function GET(
   request: NextRequest,
@@ -21,7 +25,7 @@ export async function GET(
   try {
     const authResult = await checkAuth()
     if (authResult.error) return authResult.error
-    const permResult = await checkPermission(outboundShipmentConfig.permissions.list)
+    const permResult = await checkPermission(outboundShipmentConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS)
     if (permResult.error) return permResult.error
 
     const { id: appointmentId } = await params

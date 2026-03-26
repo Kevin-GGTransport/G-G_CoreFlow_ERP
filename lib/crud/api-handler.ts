@@ -6,7 +6,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission, parsePaginationParams, buildPaginationResponse, handleValidationError, handleError, serializeBigInt } from '@/lib/api/helpers'
+import {
+  checkAuth,
+  checkPermission,
+  WMS_FULL_ACCESS_PERMISSION_OPTIONS,
+  parsePaginationParams,
+  buildPaginationResponse,
+  handleValidationError,
+  handleError,
+  serializeBigInt,
+} from '@/lib/api/helpers'
 import { applyTransform, applyTransformList } from '@/lib/api/transformers'
 import { resolveParams, withApiHandler } from '@/lib/api/middleware'
 import { EntityConfig } from './types'
@@ -19,6 +28,14 @@ import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date'
 /**
  * 获取 Prisma 模型
  */
+function checkEntityPermission(allowedRoles: string[], config: EntityConfig) {
+  const wms = Boolean(config.apiPath?.startsWith('/api/wms'))
+  return checkPermission(
+    allowedRoles,
+    wms ? WMS_FULL_ACCESS_PERMISSION_OPTIONS : undefined
+  )
+}
+
 function getPrismaModel(config: EntityConfig) {
   const modelName = config.prisma?.model || config.name
   let prismaModel = (prisma as any)[modelName]
@@ -43,7 +60,10 @@ export function createListHandler(config: EntityConfig) {
       const enhancedConfig = enhanceConfigWithSearchFields(config)
       
       // 检查权限
-      const permissionResult = await checkPermission(enhancedConfig.permissions.list)
+      const permissionResult = await checkEntityPermission(
+        enhancedConfig.permissions.list,
+        enhancedConfig
+      )
       if (permissionResult.error) return permissionResult.error
 
       const searchParams = request.nextUrl.searchParams
@@ -797,7 +817,10 @@ export function createDetailHandler(config: EntityConfig) {
     { params }: { params: Promise<{ id: string }> }
   ) => {
     try {
-      const permissionResult = await checkPermission(config.permissions.list)
+      const permissionResult = await checkEntityPermission(
+        config.permissions.list,
+        config
+      )
       if (permissionResult.error) return permissionResult.error
 
       const resolvedParams = await params
@@ -1014,7 +1037,10 @@ export function createDetailHandler(config: EntityConfig) {
 export function createCreateHandler(config: EntityConfig) {
   return async (request: NextRequest) => {
     try {
-      const permissionResult = await checkPermission(config.permissions.create)
+      const permissionResult = await checkEntityPermission(
+        config.permissions.create,
+        config
+      )
       if (permissionResult.error) return permissionResult.error
 
       const body = await request.json()
@@ -1185,7 +1211,10 @@ export function createUpdateHandler(config: EntityConfig) {
     { params }: { params: Promise<{ id: string }> }
   ) => {
     try {
-      const permissionResult = await checkPermission(config.permissions.update)
+      const permissionResult = await checkEntityPermission(
+        config.permissions.update,
+        config
+      )
       if (permissionResult.error) return permissionResult.error
 
       const resolvedParams = await params
@@ -1427,9 +1456,10 @@ export function createDeleteHandler(config: EntityConfig) {
   ) => {
     try {
       // 订单删除对所有人开放：仅校验登录，不校验角色
-      const authCheck = config.prisma?.model === 'orders'
-        ? await checkAuth()
-        : await checkPermission(config.permissions.delete)
+      const authCheck =
+        config.prisma?.model === 'orders'
+          ? await checkAuth()
+          : await checkEntityPermission(config.permissions.delete, config)
       if (authCheck.error) return authCheck.error
 
       const resolvedParams = await params
@@ -1476,9 +1506,10 @@ export function createBatchDeleteHandler(config: EntityConfig) {
   return async (request: NextRequest) => {
     try {
       // 订单批量删除对所有人开放：仅校验登录，不校验角色
-      const authCheck = config.prisma?.model === 'orders'
-        ? await checkAuth()
-        : await checkPermission(config.permissions.delete)
+      const authCheck =
+        config.prisma?.model === 'orders'
+          ? await checkAuth()
+          : await checkEntityPermission(config.permissions.delete, config)
       if (authCheck.error) return authCheck.error
 
       const body = await request.json()
@@ -1545,7 +1576,10 @@ export function createBatchDeleteHandler(config: EntityConfig) {
 export function createBatchUpdateHandler(config: EntityConfig) {
   return async (request: NextRequest) => {
     try {
-      const permissionResult = await checkPermission(config.permissions.update)
+      const permissionResult = await checkEntityPermission(
+        config.permissions.update,
+        config
+      )
       if (permissionResult.error) return permissionResult.error
 
       const body = await request.json()

@@ -4,7 +4,7 @@
  * 公式（含拒收板数）：
  * - 有效占用 = estimated_pallets - (rejected_pallets ?? 0)
  * - 未约板数 = 预计/实际板数 - sum(有效占用)（允许负数，表示已超约）
- * - 剩余板数 = 实际板数 - sum(已过期预约的有效占用)（允许负数，表示已超送）
+ * - 剩余板数 = 实际板数 - sum(已到期预约的有效占用)（含当日，与 getTotalExpiredEffectivePallets 一致）
  *
  * 在预约明细增/改/删或拒收板数变更后调用，保证 DB 存库与公式一致。
  * 实际板数为 0 时用订单明细预计板数作基准，避免未约/剩余在仅有批次但未填实数时出现异常。
@@ -63,7 +63,7 @@ export async function recalcUnbookedRemainingForOrderDetail(
     if (!start) return sum
     const d = new Date(start)
     d.setHours(0, 0, 0, 0)
-    if (d < today) return sum + getEffectivePallets(line.estimated_pallets, line.rejected_pallets)
+    if (d <= today) return sum + getEffectivePallets(line.estimated_pallets, line.rejected_pallets)
     return sum
   }, 0)
 

@@ -4,7 +4,7 @@
  * 优化：2 次查询拉全量数据，logo 只解析一次，仅 PDF 渲染并行。
  */
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission } from '@/lib/api/helpers'
+import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS } from '@/lib/api/helpers'
 import { outboundShipmentConfig } from '@/lib/crud/configs/outbound-shipments'
 import { mergePdfBuffers } from '@/lib/services/print/merge-pdf'
 import { resolveLogoDataUrl } from '@/lib/services/print/resolve-logo'
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     const authResult = await checkAuth()
     if (authResult.error) return authResult.error
-    const permResult = await checkPermission(outboundShipmentConfig.permissions.list)
+    const permResult = await checkPermission(outboundShipmentConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS)
     if (permResult.error) return permResult.error
 
     const idsParam = request.nextUrl.searchParams.get('ids')

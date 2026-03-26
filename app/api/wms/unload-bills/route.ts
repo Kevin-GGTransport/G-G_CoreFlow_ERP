@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkPermission } from '@/lib/api/helpers';
+import { checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS } from '@/lib/api/helpers';
 import prisma from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 
@@ -8,7 +8,7 @@ const UNLOAD_BILL_LIST_ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee
 /** GET 拆柜账单列表：从入库管理自动提取，支持分页、排序、筛选 */
 export async function GET(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(UNLOAD_BILL_LIST_ROLES);
+    const permissionResult = await checkPermission(UNLOAD_BILL_LIST_ROLES, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const { searchParams } = new URL(request.url);
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
 /** POST 创建或更新拆柜账单金额（按入库单，用于后续编辑价格） */
 export async function POST(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(UNLOAD_BILL_LIST_ROLES);
+    const permissionResult = await checkPermission(UNLOAD_BILL_LIST_ROLES, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const body = await request.json();

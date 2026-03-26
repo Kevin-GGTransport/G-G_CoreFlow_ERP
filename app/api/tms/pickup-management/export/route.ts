@@ -73,6 +73,18 @@ export async function GET(request: NextRequest) {
         }
         where.orders = where.orders ? { ...where.orders, ...searchCondition } : searchCondition
       }
+
+      if (searchParams.get('lfd_no_pickup') === '1') {
+        const lfdPickupFilter = {
+          lfd_date: { not: null },
+          pickup_date: null,
+        }
+        if (where.orders) {
+          where.orders = { AND: [where.orders, lfdPickupFilter] }
+        } else {
+          where.orders = lfdPickupFilter
+        }
+      }
     }
 
     const sort = searchParams.get('sort') || 'created_at'
@@ -91,11 +103,16 @@ export async function GET(request: NextRequest) {
       'updated_at',
     ]
     const orderBy: any =
-      sort === 'earliest_appointment_time'
-        ? { orders: { appointment_time: order } }
-        : mainTableFields.includes(sort)
-          ? { [sort]: order }
-          : { orders: { [sort]: order } }
+      !exportAll && searchParams.get('lfd_no_pickup') === '1'
+        ? [
+            { orders: { lfd_date: 'asc' } },
+            { earliest_appointment_time: 'asc' },
+          ]
+        : sort === 'earliest_appointment_time'
+          ? { orders: { appointment_time: order } }
+          : mainTableFields.includes(sort)
+            ? { [sort]: order }
+            : { orders: { [sort]: order } }
 
     const pickups = await prisma.pickup_management.findMany({
       where,

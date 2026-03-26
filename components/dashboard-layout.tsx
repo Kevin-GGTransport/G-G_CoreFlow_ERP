@@ -91,7 +91,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         {!sidebarCollapsed && (
           <>
             <aside className="h-full w-full">
-              <Sidebar userRole={user.role || "user"} />
+              <Sidebar userRole={user.role || "user"} username={user.username} />
             </aside>
             {/* 折叠按钮：固定在侧边栏右侧中间，紧贴侧边栏（超扁平样式） */}
             <Button
@@ -147,7 +147,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
                   </SheetTrigger>
                   <SheetContent side="left" className="w-64 p-0">
                     <SheetTitle className="sr-only">导航菜单</SheetTitle>
-                    <Sidebar userRole={user.role || "user"} />
+                    <Sidebar userRole={user.role || "user"} username={user.username} />
                   </SheetContent>
                 </Sheet>
               ) : (

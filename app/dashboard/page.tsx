@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import prisma from "@/lib/prisma"
+import { isWmsFullAccessUsername } from "@/lib/auth/wms-full-access-users"
 
 export default async function DashboardPage() {
   const session = await auth()
@@ -150,8 +151,14 @@ export default async function DashboardPage() {
   ]
 
   const userRole = session.user?.role || "user"
+  const wmsFullAccessUser = isWmsFullAccessUsername(session.user?.username)
   const filteredQuickActions = quickActions.filter(
-    (action) => !action.roles || action.roles.includes(userRole)
+    (action) =>
+      !action.roles ||
+      action.roles.includes(userRole) ||
+      (wmsFullAccessUser &&
+        typeof action.href === "string" &&
+        action.href.includes("/dashboard/wms"))
   )
 
   return (

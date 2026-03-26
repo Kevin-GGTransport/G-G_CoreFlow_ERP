@@ -4,14 +4,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { checkAuth, checkPermission } from '@/lib/api/helpers'
+import {
+  checkAuth,
+  checkPermission,
+  WMS_FULL_ACCESS_PERMISSION_OPTIONS,
+  serializeBigInt,
+} from '@/lib/api/helpers'
 import { outboundShipmentConfig } from '@/lib/crud/configs/outbound-shipments'
 import { getOutboundShipmentDetail } from '@/lib/services/outbound-shipment-detail'
 import { generateBOLPDF } from '@/lib/services/print/bol.service'
 import { resolveLogoDataUrl } from '@/lib/services/print/resolve-logo'
 import type { OAKBOLData } from '@/lib/services/print/types'
 import prisma from '@/lib/prisma'
-import { serializeBigInt } from '@/lib/api/helpers'
 
 function formatPrintTime(date: Date): string {
   const y = date.getFullYear()
@@ -47,7 +51,7 @@ export async function GET(
   try {
     const authResult = await checkAuth()
     if (authResult.error) return authResult.error
-    const permResult = await checkPermission(outboundShipmentConfig.permissions.list)
+    const permResult = await checkPermission(outboundShipmentConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS)
     if (permResult.error) return permResult.error
 
     const resolvedParams = await params

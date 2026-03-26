@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkAuth, checkPermission, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
+import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
 import { inventoryLotCreateSchema } from '@/lib/validations/inventory-lot';
 import prisma from '@/lib/prisma'
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base';
@@ -14,7 +14,7 @@ import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generato
 // GET - 获取库存管理列表
 export async function GET(request: NextRequest) {
   try {
-    const permissionResult = await checkPermission(inventoryLotConfig.permissions.list);
+    const permissionResult = await checkPermission(inventoryLotConfig.permissions.list, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
     if (permissionResult.error) return permissionResult.error;
 
     const { searchParams } = new URL(request.url);

@@ -7,6 +7,17 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { ZodError } from 'zod';
+import { isWmsFullAccessUsername } from '@/lib/auth/wms-full-access-users';
+
+export type CheckPermissionOptions = {
+  /** 为 true 时：登录名在白名单（见 wms-full-access-users）且账号活跃则放行，用于 /api/wms/* */
+  wmsFullAccessBypass?: boolean;
+};
+
+/** 仅在 app/api/wms 路由中与 checkPermission 第二参数配合使用 */
+export const WMS_FULL_ACCESS_PERMISSION_OPTIONS: CheckPermissionOptions = {
+  wmsFullAccessBypass: true,
+};
 
 /**
  * 检查用户是否登录
@@ -32,7 +43,10 @@ export async function checkAuth() {
  * 检查用户权限
  * @param allowedRoles 允许的角色列表（例如 ['admin'] 或 ['admin', 'oms_manager']）
  */
-export async function checkPermission(allowedRoles: string[]) {
+export async function checkPermission(
+  allowedRoles: string[],
+  options?: CheckPermissionOptions
+) {
   const authResult = await checkAuth();
   if (authResult.error) {
     return authResult;
@@ -62,7 +76,7 @@ export async function checkPermission(allowedRoles: string[]) {
     // 从数据库查询最新角色（以防 session 中的角色不是最新的）
     const dbUser = await prisma.users.findUnique({
       where: { id: BigInt(user.id) },
-      select: { role: true, status: true },
+      select: { role: true, status: true, username: true },
     });
 
     // 检查用户是否存在且状态为活跃
@@ -73,6 +87,16 @@ export async function checkPermission(allowedRoles: string[]) {
           { status: 403 }
         ),
         user: null,
+      };
+    }
+
+    if (
+      options?.wmsFullAccessBypass &&
+      isWmsFullAccessUsername(dbUser.username)
+    ) {
+      return {
+        error: null,
+        user: user,
       };
     }
 

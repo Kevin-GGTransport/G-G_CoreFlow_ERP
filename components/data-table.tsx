@@ -294,6 +294,8 @@ export function DataTable<TData, TValue>({
   const [columnOrder, setColumnOrder] = React.useState<ColumnOrderState>([])
   
   const [rowSelection, setRowSelection] = React.useState({})
+  /** 当前页内行下标，用于 Shift+点击复选框做区间选择（与 Excel 类似） */
+  const shiftSelectAnchorIndexRef = React.useRef<number | null>(null)
   const [pageIndex, setPageIndex] = React.useState(0)
   const [pageSize, setPageSize] = React.useState(10)
   const [pageInputValue, setPageInputValue] = React.useState<string>("")
@@ -314,6 +316,11 @@ export function DataTable<TData, TValue>({
   const currentPage = externalPage !== undefined ? externalPage - 1 : pageIndex
   const currentPageSize = externalPageSize !== undefined ? externalPageSize : pageSize
   const totalRows = total !== undefined ? total : data.length
+
+  // 翻页后锚点行含义变化，避免 Shift 连选跨页误选
+  React.useEffect(() => {
+    shiftSelectAnchorIndexRef.current = null
+  }, [currentPage])
   
   // 计算总页数（需要在创建 table 之前计算）
   const calculatedPageCount = serverSidePagination && total !== undefined 
@@ -347,6 +354,7 @@ export function DataTable<TData, TValue>({
             <Checkbox
               checked={checkedState}
               onCheckedChange={(value: boolean) => {
+                shiftSelectAnchorIndexRef.current = null
                 // 如果有行正在编辑，先取消编辑（专业系统的做法）
                 if (isRowEditing && onCancelEdit) {
                   const hasAnyRowEditing = table.getRowModel().rows.some(r => isRowEditing(r.original))
@@ -367,28 +375,71 @@ export function DataTable<TData, TValue>({
         )
       },
       cell: ({ row, table }) => {
+        const applyShiftRangeSelection = (endIndex: number) => {
+          const anchorIndex = shiftSelectAnchorIndexRef.current
+          if (anchorIndex === null) return
+
+          const pageRows = table.getRowModel().rows
+          const start = Math.min(anchorIndex, endIndex)
+          const end = Math.max(anchorIndex, endIndex)
+          const anchorRow = pageRows[anchorIndex]
+          const selectState = anchorRow?.getIsSelected() ?? true
+
+          const onChange = table.options.onRowSelectionChange
+          if (!onChange) return
+
+          onChange((old: Record<string, boolean>) => {
+            const next: Record<string, boolean> = { ...old }
+            if (selectState) {
+              // 不清本页：保留其它已选，支持多段 Shift 连选
+              for (let i = start; i <= end; i++) {
+                next[pageRows[i].id] = true
+              }
+            } else {
+              for (let i = start; i <= end; i++) {
+                next[pageRows[i].id] = false
+              }
+            }
+            return next
+          })
+
+          shiftSelectAnchorIndexRef.current = endIndex
+        }
+
+        const runAfterCancelEdit = (fn: () => void) => {
+          let hasAnyRowEditing = false
+          if (isRowEditing) {
+            hasAnyRowEditing = table.getRowModel().rows.some((r) => isRowEditing(r.original))
+          }
+          if (hasAnyRowEditing && onCancelEdit) {
+            onCancelEdit()
+            setTimeout(fn, 10)
+          } else {
+            fn()
+          }
+        }
+
         return (
-          <div className="flex items-center justify-center h-full">
+          <div
+            className="flex items-center justify-center h-full"
+            title="按住 Shift 再点另一行复选框，可连选中间所有行（仅当前页）"
+            onMouseDown={(e) => {
+              if (!e.shiftKey) return
+              if (shiftSelectAnchorIndexRef.current === null) return
+
+              e.preventDefault()
+              e.stopPropagation()
+
+              runAfterCancelEdit(() => applyShiftRangeSelection(row.index))
+            }}
+          >
             <Checkbox
               checked={row.getIsSelected()}
               onCheckedChange={(value: boolean) => {
-                // 检查是否有任何行正在编辑（包括当前行）
-                let hasAnyRowEditing = false
-                if (isRowEditing) {
-                  hasAnyRowEditing = table.getRowModel().rows.some(r => isRowEditing(r.original))
-                }
-                
-                // 如果有行正在编辑，先取消编辑，然后延迟执行选择（避免状态冲突）
-                if (hasAnyRowEditing && onCancelEdit) {
-                  onCancelEdit()
-                  // 使用 setTimeout 确保取消编辑的状态更新完成后再执行选择
-                  setTimeout(() => {
-                    row.toggleSelected(!!value)
-                  }, 10)
-                } else {
-                  // 没有行在编辑，直接执行选择
+                shiftSelectAnchorIndexRef.current = row.index
+                runAfterCancelEdit(() => {
                   row.toggleSelected(!!value)
-                }
+                })
               }}
               aria-label="选择行"
             />

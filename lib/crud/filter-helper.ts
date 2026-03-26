@@ -6,6 +6,11 @@
 import { EntityConfig, FilterFieldConfig } from './types'
 import { buildRelationFilterCondition } from './relation-filter-helper'
 
+/** 环境变量 DEBUG_CRUD_FILTERS=1 时输出筛选构建日志；默认关闭，避免 dev 下列表 API 刷屏与同步 I/O 拖慢响应 */
+function debugCrudFilters(): boolean {
+  return process.env.DEBUG_CRUD_FILTERS === '1'
+}
+
 /**
  * 安全地序列化包含 BigInt 的对象
  * 将 BigInt 值转换为字符串以便 JSON.stringify 可以处理
@@ -34,13 +39,13 @@ export function buildFilterConditions(
   const filterConditions: any[] = []
   
   if (!config.list.filterFields || config.list.filterFields.length === 0) {
-    if (process.env.NODE_ENV === 'development') {
+    if (debugCrudFilters()) {
       console.log('[buildFilterConditions] 没有 filterFields 配置')
     }
     return filterConditions
   }
   
-  if (process.env.NODE_ENV === 'development') {
+  if (debugCrudFilters()) {
     console.log('[buildFilterConditions] 开始构建筛选条件，filterFields 数量:', config.list.filterFields.length)
   }
   
@@ -59,13 +64,13 @@ export function buildFilterConditions(
             // 使用 relation 筛选，但值需要转换为字符串（因为 delivery_location 是字符串字段）
             // 直接使用字符串值，不转换为 BigInt
             filterConditions.push({ [filterField.field]: String(filterValue) })
-            if (process.env.NODE_ENV === 'development') {
+            if (debugCrudFilters()) {
               console.log(`[buildFilterConditions] 添加 delivery_location relation 筛选（字符串）: ${filterField.field} = ${String(filterValue)}`)
             }
           } else {
             // delivery_location 是字符串字段，直接使用字符串匹配
             filterConditions.push({ [filterField.field]: filterValue })
-            if (process.env.NODE_ENV === 'development') {
+            if (debugCrudFilters()) {
               console.log(`[buildFilterConditions] 添加 delivery_location 字符串筛选: ${filterField.field} = ${filterValue}`)
             }
           }
@@ -75,7 +80,7 @@ export function buildFilterConditions(
           const condition = buildRelationFilterCondition(filterField, filterValue, config)
           if (condition) {
             filterConditions.push(condition)
-          } else if (process.env.NODE_ENV === 'development') {
+          } else {
             console.warn(`[buildFilterConditions] relation 筛选条件构建失败: ${filterField.field} = ${filterValue}`)
           }
         } else {
@@ -95,7 +100,7 @@ export function buildFilterConditions(
             } else {
               filterConditions.push({ [dbFieldName]: { not: 0 } })
             }
-            if (process.env.NODE_ENV === 'development') {
+            if (debugCrudFilters()) {
               console.log(`[buildFilterConditions] 添加零/非零筛选: ${dbFieldName} ${filterValue === 'zero' ? '= 0' : '!= 0'}`)
             }
           }
@@ -117,7 +122,7 @@ export function buildFilterConditions(
                 ]
               })
             }
-            if (process.env.NODE_ENV === 'development') {
+            if (debugCrudFilters()) {
               console.log(`[buildFilterConditions] 添加100%/非100%筛选: ${dbFieldName} ${filterValue === 'complete' ? '= 1.00 (100%)' : '!= 1.00 (包括 null)'}`)
             }
           }
@@ -131,14 +136,14 @@ export function buildFilterConditions(
                 if (fieldConfig?.type === 'text' && !fieldConfig.options) {
                   const orConditions = values.map(v => ({ [dbFieldName]: { contains: v, mode: 'insensitive' as const } }))
                   filterConditions.push({ OR: orConditions })
-                  if (process.env.NODE_ENV === 'development') {
+                  if (debugCrudFilters()) {
                     console.log(`[buildFilterConditions] 添加多选文本 select 筛选: ${dbFieldName} OR [${values.join(', ')}]`)
                   }
                 } else {
                   // 对于有选项的字段，使用精确匹配
                   const orConditions = values.map(v => ({ [dbFieldName]: v }))
                   filterConditions.push({ OR: orConditions })
-                  if (process.env.NODE_ENV === 'development') {
+                  if (debugCrudFilters()) {
                     console.log(`[buildFilterConditions] 添加多选 select 筛选: ${dbFieldName} OR [${values.join(', ')}]`)
                   }
                 }
@@ -148,19 +153,19 @@ export function buildFilterConditions(
               // 对于文本类型的字段（如 delivery_nature, delivery_location），使用 contains 进行模糊匹配
               if (fieldConfig?.type === 'text' && !fieldConfig.options) {
                 filterConditions.push({ [dbFieldName]: { contains: filterValueToUse, mode: 'insensitive' } })
-                if (process.env.NODE_ENV === 'development') {
+                if (debugCrudFilters()) {
                   console.log(`[buildFilterConditions] 添加文本 select 筛选: ${dbFieldName} contains ${filterValueToUse}`)
                 }
               } else {
                 filterConditions.push({ [dbFieldName]: filterValueToUse })
-                if (process.env.NODE_ENV === 'development') {
+                if (debugCrudFilters()) {
                   console.log(`[buildFilterConditions] 添加 select 筛选: ${dbFieldName} = ${filterValueToUse} (类型: ${typeof filterValueToUse})`)
                 }
               }
             }
           }
         }
-      } else if (process.env.NODE_ENV === 'development') {
+      } else if (debugCrudFilters()) {
         console.log(`[buildFilterConditions] 跳过 select 筛选 ${filterField.field}: 值为空或 __all__`)
       }
     } else if (filterField.type === 'dateRange') {
@@ -193,7 +198,7 @@ export function buildFilterConditions(
           // 默认使用 filterField.field
           filterConditions.push({ [filterField.field]: dateCondition })
         }
-        if (process.env.NODE_ENV === 'development') {
+        if (debugCrudFilters()) {
           console.log(`[buildFilterConditions] 添加 dateRange 筛选: ${filterField.field}`, dateCondition)
         }
       }
@@ -228,7 +233,7 @@ export function buildFilterConditions(
     }
   })
   
-  if (process.env.NODE_ENV === 'development') {
+  if (debugCrudFilters()) {
     console.log('[buildFilterConditions] 构建完成，筛选条件数量:', filterConditions.length, '条件:', filterConditions)
   }
   
@@ -242,7 +247,7 @@ export function mergeFilterConditions(
   where: any,
   filterConditions: any[]
 ): void {
-  if (process.env.NODE_ENV === 'development') {
+  if (debugCrudFilters()) {
     console.log('[mergeFilterConditions] 开始合并筛选条件，条件数量:', filterConditions.length)
     console.log('[mergeFilterConditions] 当前 where 对象:', safeStringify(where, 2))
   }
@@ -251,27 +256,27 @@ export function mergeFilterConditions(
     if (filterConditions.length === 1) {
       // 如果只有一个条件，直接合并到 where（避免不必要的 AND 包装）
       Object.assign(where, filterConditions[0])
-      if (process.env.NODE_ENV === 'development') {
+      if (debugCrudFilters()) {
         console.log('[mergeFilterConditions] 单个条件，直接合并:', filterConditions[0])
       }
     } else {
       // 如果已有 where.AND，合并到其中；否则创建新的 AND 数组
       if (where.AND) {
         where.AND = [...where.AND, ...filterConditions]
-        if (process.env.NODE_ENV === 'development') {
+        if (debugCrudFilters()) {
           console.log('[mergeFilterConditions] 合并到现有 AND 数组')
         }
       } else {
         where.AND = filterConditions
-        if (process.env.NODE_ENV === 'development') {
+        if (debugCrudFilters()) {
           console.log('[mergeFilterConditions] 创建新的 AND 数组')
         }
       }
     }
-    if (process.env.NODE_ENV === 'development') {
+    if (debugCrudFilters()) {
       console.log('[mergeFilterConditions] 合并后的 where 对象:', safeStringify(where, 2))
     }
-  } else if (process.env.NODE_ENV === 'development') {
+  } else if (debugCrudFilters()) {
     console.log('[mergeFilterConditions] 没有筛选条件需要合并')
   }
 }

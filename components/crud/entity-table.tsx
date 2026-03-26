@@ -40,6 +40,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+/** 未传 extraListParams 时使用同一引用。默认写 `= {}` 会在每次渲染新建对象，使 fetchData / URL 同步的依赖变化 → 无限请求 + 地址栏不停 replace（列表「跳」、数据被 Abort 覆盖）。 */
+const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {}
+
 // 关系字段批量编辑组件（用于处理异步选项加载）
 function RelationFieldBatchEdit({
   fieldKey,
@@ -149,6 +152,8 @@ interface EntityTableProps<T = any> {
   initialFilterValues?: Record<string, string>
   /** 在快速筛选区域渲染的额外内容，传入 applyFilterValues 可一次性设置多个筛选并刷新 */
   customFilterContent?: (applyFilterValues: (v: Record<string, any>) => void) => React.ReactNode
+  /** 附加到列表 API 与地址栏的固定查询参数（如提柜管理 lfd_no_pickup），由父组件控制 */
+  extraListParams?: Record<string, string>
 }
 
 export function EntityTable<T = any>({ 
@@ -173,6 +178,7 @@ export function EntityTable<T = any>({
   refreshKey,
   initialFilterValues,
   customFilterContent,
+  extraListParams = EMPTY_EXTRA_LIST_PARAMS,
 }: EntityTableProps<T>) {
   // 自动增强配置，生成 filterFields 和 advancedSearchFields（如果未配置）
   const enhancedConfig = React.useMemo(() => {
@@ -372,6 +378,12 @@ export function EntityTable<T = any>({
     if (Object.keys(advancedSearchValues).length > 0 && advancedSearchLogic !== 'AND') {
       params.set('advanced_logic', advancedSearchLogic)
     }
+
+    Object.entries(extraListParams).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') {
+        params.set(key, value)
+      }
+    })
     
     // 更新URL（使用replace避免堆积历史记录，scroll: false避免页面跳动）
     const newUrl = params.toString() ? `${pathname}?${params.toString()}` : pathname
@@ -379,7 +391,23 @@ export function EntityTable<T = any>({
     
     // 通知父组件
     onSearchParamsChange?.(params)
-  }, [page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic, pathname, router, config.list.pageSize, config.list.defaultSort, config.list.defaultOrder, onSearchParamsChange])
+  }, [
+    page,
+    pageSize,
+    sort,
+    order,
+    search,
+    filterValues,
+    advancedSearchValues,
+    advancedSearchLogic,
+    pathname,
+    router,
+    config.list.pageSize,
+    config.list.defaultSort,
+    config.list.defaultOrder,
+    extraListParams,
+    onSearchParamsChange,
+  ])
   
   // 当选中行变化时，通知父组件
   React.useEffect(() => {
@@ -463,6 +491,12 @@ export function EntityTable<T = any>({
           params.append('advanced_logic', currentLogic)
         }
       }
+
+      Object.entries(extraListParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          params.set(key, value)
+        }
+      })
       
       const apiUrl = `${config.apiPath}?${params.toString()}`
       
@@ -522,7 +556,14 @@ export function EntityTable<T = any>({
     } finally {
       if (fetchAbortRef.current === controller) setLoading(false)
     }
-  }, [config.apiPath, config.displayName, onSearchParamsChange, onTotalChange, onFilteredTotalChange])
+  }, [
+    config.apiPath,
+    config.displayName,
+    extraListParams,
+    onSearchParamsChange,
+    onTotalChange,
+    onFilteredTotalChange,
+  ])
 
   React.useEffect(() => {
     fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
