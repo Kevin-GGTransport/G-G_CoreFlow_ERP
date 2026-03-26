@@ -37,7 +37,6 @@ export async function POST(request: NextRequest) {
         const appointmentLines = await prisma.appointment_detail_lines.findMany({
           where: {
             order_detail_id: lot.order_detail_id,
-            delivery_appointments: { isNot: null },
           },
           select: {
             estimated_pallets: true,
