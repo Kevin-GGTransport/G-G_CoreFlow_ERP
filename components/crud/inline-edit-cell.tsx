@@ -32,6 +32,181 @@ interface InlineEditCellProps {
   className?: string
   loadOptions?: () => Promise<Array<{ label: string; value: string }>>
   loadFuzzyOptions?: (search: string) => Promise<FuzzySearchOption[]>
+  /** 进入编辑后：下拉/弹层类控件自动展开（Excel 式） */
+  autoOpenDropdown?: boolean
+}
+
+/** 静态/异步选项的 Select 行内编辑，支持进入时自动展开 */
+function InlineSelectWithAutoOpen({
+  autoOpenDropdown,
+  loadingOptions,
+  internalValue,
+  fieldConfig,
+  className,
+  selectOptions,
+  onInternalChange,
+  onCommit,
+}: {
+  autoOpenDropdown: boolean
+  loadingOptions: boolean
+  internalValue: any
+  fieldConfig: FieldConfig
+  className?: string
+  selectOptions: Array<{ label: string; value: string }>
+  onInternalChange: (v: any) => void
+  onCommit: (v: any) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const didAutoOpenRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!autoOpenDropdown || loadingOptions || didAutoOpenRef.current) return
+    didAutoOpenRef.current = true
+    setOpen(true)
+  }, [autoOpenDropdown, loadingOptions])
+  return (
+    <div onClick={(e) => e.stopPropagation()} className="inline-edit-cell">
+      <Select
+        open={open}
+        onOpenChange={setOpen}
+        value={internalValue || ""}
+        onValueChange={(val) => {
+          if (val === "__clear__") {
+            onInternalChange(null)
+            onCommit(null)
+          } else {
+            onInternalChange(val || null)
+            onCommit(val || null)
+          }
+        }}
+        disabled={loadingOptions}
+      >
+        <SelectTrigger className={cn("h-10 text-sm min-w-[120px] w-full", className)}>
+          <SelectValue placeholder={loadingOptions ? "加载中..." : `请选择${fieldConfig.label}`} />
+        </SelectTrigger>
+        <SelectContent position="popper" side="bottom" align="start" sideOffset={4}>
+          {internalValue && (
+            <SelectItem value="__clear__" key="__clear__">
+              <span className="text-muted-foreground italic">（清空）</span>
+            </SelectItem>
+          )}
+          {selectOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/** relation + loadOptions 的 Select（含暂无选项态），支持进入时自动展开 */
+function InlineRelationSelectWithAutoOpen({
+  autoOpenDropdown,
+  loadingOptions,
+  internalValue,
+  fieldConfig,
+  className,
+  selectOptions,
+  onInternalChange,
+  onCommit,
+}: {
+  autoOpenDropdown: boolean
+  loadingOptions: boolean
+  internalValue: any
+  fieldConfig: FieldConfig
+  className?: string
+  selectOptions: Array<{ label: string; value: string }>
+  onInternalChange: (v: any) => void
+  onCommit: (v: any) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const didAutoOpenRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!autoOpenDropdown || loadingOptions || didAutoOpenRef.current) return
+    didAutoOpenRef.current = true
+    setOpen(true)
+  }, [autoOpenDropdown, loadingOptions])
+  return (
+    <div onClick={(e) => e.stopPropagation()} className="inline-edit-cell">
+      <Select
+        open={open}
+        onOpenChange={setOpen}
+        value={internalValue || ""}
+        onValueChange={(val) => {
+          if (val === "__clear__") {
+            onInternalChange(null)
+            onCommit(null)
+          } else {
+            onInternalChange(val || null)
+            onCommit(val || null)
+          }
+        }}
+        disabled={loadingOptions}
+      >
+        <SelectTrigger className={cn("h-10 text-sm min-w-[120px] w-full", className)}>
+          <SelectValue placeholder={loadingOptions ? "加载中..." : `请选择${fieldConfig.label}`} />
+        </SelectTrigger>
+        <SelectContent>
+          {selectOptions.length === 0 && !loadingOptions ? (
+            <SelectItem value="__disabled__" disabled>
+              暂无选项
+            </SelectItem>
+          ) : (
+            <>
+              {internalValue && (
+                <SelectItem value="__clear__" key="__clear__">
+                  <span className="text-muted-foreground italic">（清空）</span>
+                </SelectItem>
+              )}
+              {selectOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </>
+          )}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/** 提柜日期行内：小时下拉，支持进入编辑时自动展开 */
+function PickupDateHourSelect({
+  hourPart,
+  hourOptions,
+  onHourChange,
+  className,
+  autoOpenDropdown,
+}: {
+  hourPart: string
+  hourOptions: { label: string; value: string }[]
+  onHourChange: (hour: string) => void
+  className?: string
+  autoOpenDropdown: boolean
+}) {
+  const [open, setOpen] = React.useState(false)
+  const didAutoOpenRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!autoOpenDropdown || didAutoOpenRef.current) return
+    didAutoOpenRef.current = true
+    setOpen(true)
+  }, [autoOpenDropdown])
+  return (
+    <Select open={open} onOpenChange={setOpen} value={hourPart} onValueChange={onHourChange}>
+      <SelectTrigger className={cn("w-24 h-9 text-sm bg-white", className)}>
+        <SelectValue placeholder="小时" />
+      </SelectTrigger>
+      <SelectContent>
+        {hourOptions.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
 }
 
 export function InlineEditCell({
@@ -42,6 +217,7 @@ export function InlineEditCell({
   className,
   loadOptions,
   loadFuzzyOptions,
+  autoOpenDropdown = false,
 }: InlineEditCellProps) {
   // 使用内部状态管理输入值，避免每次输入都触发外部状态更新
   // 对于 boolean 字段，需要特殊处理：false 是有效值，不应该被转换为 ''
@@ -166,13 +342,20 @@ export function InlineEditCell({
           : internalValue)
         : ''
       return (
-        <div onClick={(e) => e.stopPropagation()} className="inline-edit-cell flex items-center gap-1">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="inline-edit-cell mr-auto inline-flex w-fit max-w-full min-w-0 items-center gap-1"
+        >
+          {/* 勿用 flex-1：在宽单元格里会把原生 date 拉成一条长条，日历/清空按钮被甩到最右侧 */}
           <Input
             type="date"
             value={dateValue}
             onChange={(e) => handleInternalChange(e.target.value || null)}
             onBlur={handleBlur}
-            className={cn("h-9 text-sm min-w-[140px] flex-1 bg-white", className)}
+            className={cn(
+              "h-9 w-[10.5rem] max-w-full shrink-0 text-sm bg-white",
+              className
+            )}
           />
           {internalValue && (
             <Button
@@ -240,26 +423,16 @@ export function InlineEditCell({
               onBlur={handleBlur}
               className={cn("h-9 text-sm min-w-[140px] flex-1 bg-white", className)}
             />
-            <Select
-              value={hourPart}
-              onValueChange={(newHour) => {
+            <PickupDateHourSelect
+              hourPart={hourPart}
+              hourOptions={hourOptions}
+              autoOpenDropdown={autoOpenDropdown}
+              onHourChange={(newHour) => {
                 const newValue = datePart ? `${datePart}T${newHour}:00` : null
                 handleInternalChange(newValue)
-                // Select 组件值改变时立即同步到外部
                 onChange(newValue)
               }}
-            >
-              <SelectTrigger className="w-24 h-9 text-sm bg-white">
-                <SelectValue placeholder="小时" />
-              </SelectTrigger>
-              <SelectContent>
-                {hourOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
         )
       }
@@ -304,7 +477,7 @@ export function InlineEditCell({
       }
       // 对于 current_location 字段，使用 combobox 组件，支持自定义输入和下拉选择
       if (fieldKey === 'current_location') {
-        const [open, setOpen] = React.useState(false)
+        const [open, setOpen] = React.useState(autoOpenDropdown)
         const [searchValue, setSearchValue] = React.useState("")
         
         // 确保选项已加载
@@ -424,39 +597,16 @@ export function InlineEditCell({
         )
       }
       return (
-        <div onClick={(e) => e.stopPropagation()} className="inline-edit-cell">
-          <Select
-            value={internalValue || ''}
-            onValueChange={(val) => {
-              // 处理清空选项
-              if (val === '__clear__') {
-                handleInternalChange(null)
-                onChange(null)
-              } else {
-                handleInternalChange(val || null)
-                // Select 组件在值改变时立即同步到外部
-                onChange(val || null)
-              }
-            }}
-            disabled={loadingOptions}
-          >
-            <SelectTrigger className={cn("h-10 text-sm min-w-[120px] w-full", className)}>
-              <SelectValue placeholder={loadingOptions ? "加载中..." : `请选择${fieldConfig.label}`} />
-            </SelectTrigger>
-            <SelectContent position="popper" side="bottom" align="start" sideOffset={4}>
-              {internalValue && (
-                <SelectItem value="__clear__" key="__clear__">
-                  <span className="text-muted-foreground italic">（清空）</span>
-                </SelectItem>
-              )}
-              {selectOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <InlineSelectWithAutoOpen
+          autoOpenDropdown={autoOpenDropdown}
+          loadingOptions={loadingOptions}
+          internalValue={internalValue}
+          fieldConfig={fieldConfig}
+          className={className}
+          selectOptions={selectOptions}
+          onInternalChange={handleInternalChange}
+          onCommit={onChange}
+        />
       )
 
     case 'textarea':
@@ -513,6 +663,7 @@ export function InlineEditCell({
             placeholder={fieldConfig.placeholder || `请选择${fieldConfig.label}`}
             className={className} // 只传递外部className，不覆盖核心样式
             locationType={fieldConfig.locationType} // 支持直接指定位置类型
+            autoOpenOnMount={autoOpenDropdown}
           />
         </div>
       )
@@ -533,6 +684,7 @@ export function InlineEditCell({
               placeholder={fieldConfig.placeholder || `请选择${fieldConfig.label}`}
               className={className} // 只传递外部className，不覆盖核心样式
               locationType={fieldConfig.locationType} // 支持直接指定位置类型
+              autoOpenOnMount={autoOpenDropdown}
             />
           </div>
         )
@@ -576,44 +728,16 @@ export function InlineEditCell({
         }, [loadOptions, fieldKey, selectOptions.length, loadingOptions])
         
         return (
-          <div onClick={(e) => e.stopPropagation()} className="inline-edit-cell">
-            <Select
-              value={internalValue || ''}
-              onValueChange={(val) => {
-                // 处理清空选项
-                if (val === '__clear__') {
-                  handleInternalChange(null)
-                  onChange(null)
-                } else {
-                  handleInternalChange(val || null)
-                  onChange(val || null) // 立即同步到外部
-                }
-              }}
-              disabled={loadingOptions}
-            >
-              <SelectTrigger className={cn("h-10 text-sm min-w-[120px] w-full", className)}>
-                <SelectValue placeholder={loadingOptions ? "加载中..." : `请选择${fieldConfig.label}`} />
-              </SelectTrigger>
-              <SelectContent>
-                {selectOptions.length === 0 && !loadingOptions ? (
-                  <SelectItem value="__disabled__" disabled>暂无选项</SelectItem>
-                ) : (
-                  <>
-                    {internalValue && (
-                      <SelectItem value="__clear__" key="__clear__">
-                        <span className="text-muted-foreground italic">（清空）</span>
-                      </SelectItem>
-                    )}
-                    {selectOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
+          <InlineRelationSelectWithAutoOpen
+            autoOpenDropdown={autoOpenDropdown}
+            loadingOptions={loadingOptions}
+            internalValue={internalValue}
+            fieldConfig={fieldConfig}
+            className={className}
+            selectOptions={selectOptions}
+            onInternalChange={handleInternalChange}
+            onCommit={onChange}
+          />
         )
       }
       // 如果没有 loadOptions 和 loadFuzzyOptions，使用默认处理

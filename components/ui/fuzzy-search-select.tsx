@@ -261,12 +261,13 @@ export function FuzzySearchSelect({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal={false} open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          onPointerDown={(e) => e.stopPropagation()}
           className={cn(
             // 基础样式 - 统一白色样式，与 LocationSelect 保持一致
             "w-full justify-between h-9 font-medium transition-all duration-200",

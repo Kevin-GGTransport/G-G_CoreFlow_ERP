@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  type Column,
   ColumnDef,
   ColumnFiltersState,
   SortingState,
@@ -42,6 +43,34 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
+/** 数据列「Excel 式」最大宽度；短列用较小默认 size，显示时不超过此值 */
+const MAX_DATA_COLUMN_WIDTH_PX = 200
+const MAX_ACTIONS_COLUMN_WIDTH_PX = 220
+const MAX_SELECT_COLUMN_WIDTH_PX = 72
+const DEFAULT_COLUMN_SIZE_PX = 112
+/** 行内编辑：去掉 200px 硬顶；默认略放宽。日期/弹层类字段由 inlineEditColumnWidthHints 单独给上下限 */
+const INLINE_EDIT_COLUMN_SOFT_MIN_PX = 120
+const INLINE_EDIT_COLUMN_SOFT_MAX_PX = 240
+
+export type InlineEditColumnWidthHint = { min?: number; max?: number }
+
+function getColumnDisplayWidthPx<TData>(
+  column: Column<TData, unknown>,
+  unboundedColumnIds?: Set<string> | null,
+  widthHints?: Record<string, InlineEditColumnWidthHint> | null
+): number {
+  const s = column.getSize()
+  if (column.id === "select") return Math.min(s, MAX_SELECT_COLUMN_WIDTH_PX)
+  if (column.id === "actions") return Math.min(s, MAX_ACTIONS_COLUMN_WIDTH_PX)
+  if (unboundedColumnIds?.has(column.id)) {
+    const hint = column.id ? widthHints?.[column.id] : undefined
+    const minPx = hint?.min ?? INLINE_EDIT_COLUMN_SOFT_MIN_PX
+    const maxPx = hint?.max ?? INLINE_EDIT_COLUMN_SOFT_MAX_PX
+    return Math.min(Math.max(s, minPx), maxPx)
+  }
+  return Math.min(s, MAX_DATA_COLUMN_WIDTH_PX)
+}
+
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[]
   data: TData[]
@@ -78,6 +107,8 @@ interface DataTableProps<TData, TValue> {
   // 行内编辑相关
   isRowEditing?: (row: TData) => boolean // 检查行是否正在编辑
   onCancelEdit?: () => void // 取消编辑回调（当点击其他行时调用）
+  /** 为 false 时，勾选复选框不会触发 onCancelEdit（多行草稿批量保存场景） */
+  cancelEditOnSelectionChange?: boolean
   // 可展开行相关
   expandableRows?: {
     enabled: boolean
@@ -85,6 +116,10 @@ interface DataTableProps<TData, TValue> {
   }
   // 行样式相关
   getRowClassName?: (row: TData) => string | undefined // 根据行数据返回自定义 className
+  /** 行内编辑中的列 id：这些列临时突破最大列宽，保存后清空即可恢复 */
+  inlineEditUnboundedColumnIds?: Set<string> | readonly string[] | null
+  /** 按列覆盖行内编辑时的最小/最大显示宽度（如 date 需容纳原生日期控件 + 清空按钮） */
+  inlineEditColumnWidthHints?: Record<string, InlineEditColumnWidthHint> | null
 }
 
 export function DataTable<TData, TValue>({
@@ -114,8 +149,11 @@ export function DataTable<TData, TValue>({
   selectedRows: externalSelectedRows,
   isRowEditing,
   onCancelEdit,
+  cancelEditOnSelectionChange = true,
   expandableRows,
   getRowClassName,
+  inlineEditUnboundedColumnIds,
+  inlineEditColumnWidthHints,
 }: DataTableProps<TData, TValue>) {
   // 防止 hydration 错误：只在客户端渲染 DropdownMenu
   const [mounted, setMounted] = React.useState(false)
@@ -135,7 +173,21 @@ export function DataTable<TData, TValue>({
   const [isDraggingScroll, setIsDraggingScroll] = React.useState(false)
   const isDraggingScrollRef = React.useRef(false)
   const scrollStartRef = React.useRef({ x: 0, scrollLeft: 0, hasMoved: false })
-  
+  /** 横向滚动容器宽度：列总宽小于容器时把多余像素平均分到各列，铺满 100% */
+  const [tableContainerWidthPx, setTableContainerWidthPx] = React.useState(0)
+
+  React.useLayoutEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width
+      if (w != null) setTableContainerWidthPx(w)
+    })
+    ro.observe(el)
+    setTableContainerWidthPx(el.getBoundingClientRect().width)
+    return () => ro.disconnect()
+  }, [])
+
   React.useEffect(() => {
     setMounted(true)
   }, [])
@@ -355,8 +407,8 @@ export function DataTable<TData, TValue>({
               checked={checkedState}
               onCheckedChange={(value: boolean) => {
                 shiftSelectAnchorIndexRef.current = null
-                // 如果有行正在编辑，先取消编辑（专业系统的做法）
-                if (isRowEditing && onCancelEdit) {
+                // 如果有行正在编辑，先取消编辑（专业系统的做法）；多行草稿时可关闭此行为
+                if (cancelEditOnSelectionChange && isRowEditing && onCancelEdit) {
                   const hasAnyRowEditing = table.getRowModel().rows.some(r => isRowEditing(r.original))
                   if (hasAnyRowEditing) {
                     onCancelEdit()
@@ -411,7 +463,7 @@ export function DataTable<TData, TValue>({
           if (isRowEditing) {
             hasAnyRowEditing = table.getRowModel().rows.some((r) => isRowEditing(r.original))
           }
-          if (hasAnyRowEditing && onCancelEdit) {
+          if (cancelEditOnSelectionChange && hasAnyRowEditing && onCancelEdit) {
             onCancelEdit()
             setTimeout(fn, 10)
           } else {
@@ -448,10 +500,9 @@ export function DataTable<TData, TValue>({
       },
       enableSorting: false,
       enableHiding: false,
-      // 权重略高于「单列默认」的一小部分，让整表 100% 铺平时左侧仍留出足够留白
-      size: 200,
-      minSize: 0,
-      maxSize: 280,
+      size: 56,
+      minSize: 48,
+      maxSize: MAX_SELECT_COLUMN_WIDTH_PX,
       meta: {
         widthClass: "min-w-0",
         alignRight: false,
@@ -459,7 +510,7 @@ export function DataTable<TData, TValue>({
     }
 
     return [selectColumn, ...columns]
-  }, [enableRowSelection, columns, isRowEditing, getIdValue, onCancelEdit])
+  }, [enableRowSelection, columns, isRowEditing, getIdValue, onCancelEdit, cancelEditOnSelectionChange])
 
   // 行选择变化处理
   const handleRowSelectionChange = React.useCallback((updater: any) => {
@@ -499,12 +550,11 @@ export function DataTable<TData, TValue>({
     columnResizeMode: 'onChange',
     onColumnSizingChange: setColumnSizing,
     onColumnOrderChange: setColumnOrder,
-    // 列宽：size 为「权重」（px 数值），整表 100% 宽时按权重比例分配；默认约 280。
-    // 用户拖拽 = 改权重；maxSize 放宽以便像 Excel 一样可拉得很宽（不被 400px 卡住）。
+    // 列宽：size 为逻辑像素；渲染时再按 MAX_* 封顶，表总宽为各列之和，列少时不强行撑满视口。
     defaultColumn: {
-      size: 280,
-      minSize: 0,
-      maxSize: 9999,
+      size: DEFAULT_COLUMN_SIZE_PX,
+      minSize: 48,
+      maxSize: MAX_DATA_COLUMN_WIDTH_PX,
     },
     state: {
       sorting,
@@ -520,19 +570,76 @@ export function DataTable<TData, TValue>({
     },
   })
 
-  // 展开列：权重参与百分比分配；minWidth 保证箭头完整显示且左右留白（不随列数被压得过窄）
+  const inlineEditUnboundedIds = React.useMemo(() => {
+    if (!inlineEditUnboundedColumnIds) return null
+    return inlineEditUnboundedColumnIds instanceof Set
+      ? inlineEditUnboundedColumnIds
+      : new Set(inlineEditUnboundedColumnIds)
+  }, [inlineEditUnboundedColumnIds])
+
+  // 展开列：参与表总宽；宽度封顶，避免单独占得过宽
   const expandColumnMinWidthPx = 72
-  const expandColWeight = expandableRows?.enabled ? 160 : 0
+  const expandColWeight = expandableRows?.enabled ? 96 : 0
+  const expandColumnDisplayPx = expandableRows?.enabled
+    ? Math.max(expandColumnMinWidthPx, Math.min(expandColWeight, 96))
+    : 0
   const layoutTotal = React.useMemo(() => {
     const sum = table
       .getVisibleLeafColumns()
-      .reduce((acc, col) => acc + col.getSize(), 0)
-    return Math.max(sum + expandColWeight, 1)
-  }, [table, columnSizing, columnVisibility, columnOrder, expandColWeight, expandableRows?.enabled])
-  const colWidthPercent = React.useCallback(
-    (weight: number) => `${(weight / layoutTotal) * 100}%`,
-    [layoutTotal]
-  )
+      .reduce(
+        (acc, col) =>
+          acc + getColumnDisplayWidthPx(col, inlineEditUnboundedIds, inlineEditColumnWidthHints),
+        0
+      )
+    return Math.max(sum + expandColumnDisplayPx, 1)
+  }, [
+    table,
+    columnSizing,
+    columnVisibility,
+    columnOrder,
+    expandColumnDisplayPx,
+    inlineEditUnboundedIds,
+    inlineEditColumnWidthHints,
+  ])
+
+  const stretchLayout = React.useMemo(() => {
+    const visibleCols = table.getVisibleLeafColumns()
+    const isUnboundedCol = (column: Column<TData, unknown>) =>
+      Boolean(column.id && inlineEditUnboundedIds?.has(column.id))
+    // 行内编辑列已按 min/max 算好宽度，不再参与「均分剩余宽度」，否则 ETA 等列会 336px + 一大块空白
+    let stretchEligibleCount = 0
+    for (const col of visibleCols) {
+      if (!isUnboundedCol(col)) stretchEligibleCount++
+    }
+    if (expandableRows?.enabled) stretchEligibleCount++
+
+    const extraSpace = Math.max(0, tableContainerWidthPx - layoutTotal)
+    const perColExtra =
+      stretchEligibleCount > 0 ? extraSpace / stretchEligibleCount : 0
+    const tableWidthPx = layoutTotal + extraSpace
+    const getStretchedWidthPx = (column: Column<TData, unknown>) => {
+      const base = getColumnDisplayWidthPx(
+        column,
+        inlineEditUnboundedIds,
+        inlineEditColumnWidthHints
+      )
+      if (isUnboundedCol(column)) return base
+      return base + perColExtra
+    }
+    const expandStretchedPx = expandColumnDisplayPx + perColExtra
+    return { getStretchedWidthPx, tableWidthPx, expandStretchedPx }
+  }, [
+    table,
+    columnSizing,
+    columnVisibility,
+    columnOrder,
+    layoutTotal,
+    tableContainerWidthPx,
+    expandableRows?.enabled,
+    expandColumnDisplayPx,
+    inlineEditUnboundedIds,
+    inlineEditColumnWidthHints,
+  ])
 
   // 当 table 初始化后，应用默认视图（确保列ID都正确）
   // 这个 useEffect 必须在 table 创建之后
@@ -814,7 +921,11 @@ export function DataTable<TData, TValue>({
         >
           <Table
             noWrapper
-            className="border-collapse table-fixed sticky-table h-auto w-full min-w-full max-w-none bg-background"
+            className="border-collapse table-fixed sticky-table h-auto max-w-none bg-background w-full"
+            style={{
+              width: stretchLayout.tableWidthPx,
+              minWidth: stretchLayout.tableWidthPx,
+            }}
           >
             <TableHeader className="bg-muted/80">
             {table.getHeaderGroups().map((headerGroup) => (
@@ -826,7 +937,11 @@ export function DataTable<TData, TValue>({
                   {expandableRows?.enabled && (
                     <TableHead
                       className="px-2 py-1 text-center bg-muted/80 overflow-hidden"
-                      style={{ width: colWidthPercent(expandColWeight), minWidth: expandColumnMinWidthPx }}
+                      style={{
+                        width: stretchLayout.expandStretchedPx,
+                        minWidth: expandColumnMinWidthPx,
+                        maxWidth: stretchLayout.expandStretchedPx,
+                      }}
                     >
                       {/* 占位，保持对齐 */}
                     </TableHead>
@@ -903,8 +1018,9 @@ export function DataTable<TData, TValue>({
                           shouldSticky && stickyPosition === 'right' && "sticky right-0 z-20 bg-muted/80"
                         )}
                         style={{
-                          width: colWidthPercent(header.getSize()),
-                          minWidth: 280,
+                          width: stretchLayout.getStretchedWidthPx(header.column),
+                          minWidth: stretchLayout.getStretchedWidthPx(header.column),
+                          maxWidth: stretchLayout.getStretchedWidthPx(header.column),
                           ...(shouldSticky && stickyPosition === 'right' ? { 
                             boxShadow: '-2px 0 4px -2px rgba(0, 0, 0, 0.1)' 
                           } : {}),
@@ -996,9 +1112,10 @@ export function DataTable<TData, TValue>({
                     )
                   }
                   
-                  // 获取列宽样式和对齐方式
+                  // 获取列宽样式和对齐方式（默认居中，避免短内容时右侧大块留白；meta.alignLeft / alignRight 可覆盖）
                   const widthClass = (header.column.columnDef.meta as any)?.widthClass || ''
                   const alignRight = (header.column.columnDef.meta as any)?.alignRight || false
+                  const alignLeft = (header.column.columnDef.meta as any)?.alignLeft || false
                   
                   // 判断是否可以拖拽（复选框列和操作列不可拖拽，正在resize时也不可拖拽）
                   const isDraggable = !isSelectColumn && !isActionsColumn && !isResizing
@@ -1019,8 +1136,9 @@ export function DataTable<TData, TValue>({
                         isDragOver && "bg-blue-100 dark:bg-blue-900/30"
                       )}
                       style={{
-                        width: colWidthPercent(header.getSize()),
-                        minWidth: 0,
+                        width: stretchLayout.getStretchedWidthPx(header.column),
+                        minWidth: stretchLayout.getStretchedWidthPx(header.column),
+                        maxWidth: stretchLayout.getStretchedWidthPx(header.column),
                         ...(shouldSticky && stickyPosition === 'left' ? { 
                           left: 0,
                           boxShadow: '2px 0 4px -2px rgba(0, 0, 0, 0.1)'
@@ -1052,13 +1170,13 @@ export function DataTable<TData, TValue>({
                           <div
                             className={cn(
                               "flex min-w-0 max-w-full items-center gap-0.5",
-                              alignRight ? "justify-end" : "justify-start"
+                              alignRight ? "justify-end" : alignLeft ? "justify-start" : "justify-center"
                             )}
                           >
                             <span
                               className={cn(
                                 "min-w-0 truncate block flex-1",
-                                alignRight ? "text-right" : "text-left"
+                                alignRight ? "text-right" : alignLeft ? "text-left" : "text-center"
                               )}
                             >
                             {flexRender(
@@ -1170,7 +1288,7 @@ export function DataTable<TData, TValue>({
                       data-state={(isSelected && "selected") || (isEditing && "editing")}
                       suppressHydrationWarning={isEditing} // 编辑状态可能在服务器端和客户端不一致
                       className={cn(
-                        "transition-colors duration-100 border-0 group cursor-pointer",
+                        "transition-colors duration-100 border-0 group cursor-pointer [&>td]:h-8",
                         // 主行：紧凑 + Excel 式网格（单元格边框由 TableCell 承担）
                         isEditing
                           ? "bg-amber-50/90 dark:bg-amber-950/35 border-l-2 border-l-amber-500 dark:border-l-amber-500"
@@ -1189,7 +1307,11 @@ export function DataTable<TData, TValue>({
                       {expandableRows?.enabled && (
                         <TableCell
                           className="py-0.5 px-2 text-center overflow-hidden"
-                          style={{ width: colWidthPercent(expandColWeight), minWidth: expandColumnMinWidthPx }}
+                          style={{
+                            width: stretchLayout.expandStretchedPx,
+                            minWidth: expandColumnMinWidthPx,
+                            maxWidth: stretchLayout.expandStretchedPx,
+                          }}
                         >
                           {canExpand ? (
                             <div 
@@ -1340,6 +1462,9 @@ export function DataTable<TData, TValue>({
                         const alignRightCell = Boolean(
                           (cell.column.columnDef.meta as { alignRight?: boolean } | undefined)?.alignRight
                         )
+                        const alignLeftCell = Boolean(
+                          (cell.column.columnDef.meta as { alignLeft?: boolean } | undefined)?.alignLeft
+                        )
                         const plainForTitle = extractCellText()
                         
                         return (
@@ -1350,18 +1475,19 @@ export function DataTable<TData, TValue>({
                               isActionsCell ? "overflow-visible" : "overflow-hidden",
                               !isActionsCell && !isSelectCell && "font-normal text-foreground",
                               isActionsCell
-                                ? "px-2.5"
+                                ? "px-2"
                                 : isSelectCell
-                                  ? "px-2.5"
-                                  : "px-1",
+                                  ? "px-2"
+                                  : "px-1.5",
                               widthClass,
                               shouldSticky && stickyPosition === 'left' && "sticky z-10 left-0",
                               shouldSticky && stickyPosition === 'right' && "sticky right-0 z-10",
                               isCopied && "bg-green-50 dark:bg-green-950/20"
                             )}
                             style={{
-                              width: colWidthPercent(cell.column.getSize()),
-                              minWidth: isActionsCell ? 280 : 0,
+                              width: stretchLayout.getStretchedWidthPx(cell.column),
+                              minWidth: stretchLayout.getStretchedWidthPx(cell.column),
+                              maxWidth: stretchLayout.getStretchedWidthPx(cell.column),
                               ...(shouldSticky ? { 
                                 left: stickyPosition === 'left' ? 0 : undefined,
                                 right: stickyPosition === 'right' ? 0 : undefined,
@@ -1375,14 +1501,29 @@ export function DataTable<TData, TValue>({
                             }}
                             onContextMenu={handleContextMenu}
                             onClick={(e) => {
-                              // 如果点击的是可编辑单元格，阻止事件冒泡到行
+                              // 如果点击的是可编辑单元格 / 下拉触发器，阻止事件冒泡到行（避免抢点击、误触滚动）
                               if (e.target instanceof HTMLElement) {
                                 const target = e.target as HTMLElement
-                                if (target.closest('.inline-edit-cell') || 
-                                    target.closest('input') || 
-                                    target.closest('textarea') || 
-                                    target.closest('select') ||
-                                    target.closest('[contenteditable="true"]')) {
+                                if (
+                                  target.closest(".inline-edit-cell") ||
+                                  target.closest('[data-slot="popover-trigger"]') ||
+                                  target.closest('[data-slot="popover-content"]') ||
+                                  target.closest("input") ||
+                                  target.closest("textarea") ||
+                                  target.closest("select") ||
+                                  target.closest('[contenteditable="true"]')
+                                ) {
+                                  e.stopPropagation()
+                                }
+                              }
+                            }}
+                            onPointerDown={(e) => {
+                              if (e.target instanceof HTMLElement) {
+                                const target = e.target as HTMLElement
+                                if (
+                                  target.closest('[data-slot="popover-trigger"]') ||
+                                  target.closest(".inline-edit-cell")
+                                ) {
                                   e.stopPropagation()
                                 }
                               }
@@ -1391,14 +1532,18 @@ export function DataTable<TData, TValue>({
                           >
                             <div
                               className={cn(
-                                "relative w-full",
+                                "relative h-full w-full",
                                 isActionsCell ? "flex min-w-max shrink-0 items-center justify-center" : "min-w-0",
                                 isSelectCell ? "flex min-w-0 items-center justify-center" : null,
                                 !isActionsCell && !isSelectCell
                                   ? cn(
-                                      "block overflow-hidden text-ellipsis whitespace-nowrap",
-                                      alignRightCell ? "text-right" : "text-left",
-                                      // 默认单元格常包一层 div；行内编辑容器不截断
+                                      // flex：垂直居中 + 水平按列对齐，避免内容在格子里「飘」
+                                      "relative flex h-full w-full min-w-0 items-center overflow-hidden",
+                                      alignRightCell
+                                        ? "justify-end [&>*:not(.inline-edit-cell)]:text-right"
+                                        : alignLeftCell
+                                          ? "justify-start [&>*:not(.inline-edit-cell)]:text-left"
+                                          : "justify-center [&>*:not(.inline-edit-cell)]:text-center",
                                       "[&>*:not(.inline-edit-cell)]:min-w-0 [&>*:not(.inline-edit-cell)]:max-w-full [&>*:not(.inline-edit-cell)]:overflow-hidden [&>*:not(.inline-edit-cell)]:text-ellipsis [&>*:not(.inline-edit-cell)]:whitespace-nowrap"
                                     )
                                   : null

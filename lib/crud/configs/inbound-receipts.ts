@@ -34,6 +34,15 @@ export const inboundReceiptConfig: EntityConfig = {
       type: 'text',
       searchable: true,
     },
+    /** 当前行对应订单的 order_detail 条数，列表 API 计算，不落库 */
+    warehouse_point_count: {
+      key: 'warehouse_point_count',
+      label: '仓点数',
+      type: 'number',
+      computed: true,
+      sortable: true,
+      omitFromAdvancedSearch: true,
+    },
     order_date: {
       key: 'order_date',
       label: '预报日期',
@@ -186,6 +195,7 @@ export const inboundReceiptConfig: EntityConfig = {
     columns: [
       'customer_name',
       'container_number',
+      'warehouse_point_count',
       'order_date',
       'eta_date',
       'ready_date',

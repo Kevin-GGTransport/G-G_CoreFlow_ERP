@@ -38,6 +38,8 @@ interface LocationSelectProps {
   className?: string
   disabled?: boolean
   locationType?: string // 直接指定位置类型，如果提供则只显示该类型的位置，不显示类型选择器
+  /** 挂载后自动展开下拉（行内编辑进入时） */
+  autoOpenOnMount?: boolean
 }
 
 const LOCATION_TYPES = [
@@ -54,8 +56,15 @@ export function LocationSelect({
   className,
   disabled = false,
   locationType, // 直接指定位置类型
+  autoOpenOnMount = false,
 }: LocationSelectProps) {
   const [open, setOpen] = React.useState(false)
+  const autoOpenOnceRef = React.useRef(false)
+  React.useEffect(() => {
+    if (!autoOpenOnMount || autoOpenOnceRef.current) return
+    autoOpenOnceRef.current = true
+    setOpen(true)
+  }, [autoOpenOnMount])
   const [selectedType, setSelectedType] = React.useState<string | null>(locationType || null)
   const [locations, setLocations] = React.useState<Location[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -210,12 +219,13 @@ export function LocationSelect({
     : placeholder
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal={false} open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          onPointerDown={(e) => e.stopPropagation()}
           className={cn(
             // 基础样式 - 统一白色样式，所有位置选择字段都使用这个
             "w-full justify-between h-10 min-w-[120px] font-medium transition-all duration-200",

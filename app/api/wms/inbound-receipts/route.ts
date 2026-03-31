@@ -177,6 +177,12 @@ export async function GET(request: NextRequest) {
     } else if (sort === 'carrier') {
       // 承运公司排序
       orderBy = { orders: { carriers: { name: order } } };
+    } else if (sort === 'warehouse_point_count') {
+      // 仓点数：按关联订单的 order_detail 条数排序（与列表计算口径一致）
+      orderBy = [
+        { orders: { order_detail: { _count: order } } },
+        { inbound_receipt_id: 'desc' },
+      ];
     } else if (sort === 'delivery_progress') {
       // 送仓进度为计算字段，先按主键查回再在内存中按计算值排序
       orderBy = { inbound_receipt_id: 'desc' };
@@ -437,15 +443,18 @@ export async function GET(request: NextRequest) {
         
         // 送货进度：与详情页仓点明细一致（预约实时剩余 → 各行进度 → 按基准板数加权平均）
         const inventoryLots = serialized.inventory_lots || [];
+        const orderDetails = order?.order_detail || []
         const calculatedDeliveryProgress = computeInboundReceiptHeaderDeliveryProgress({
-          orderDetails: order?.order_detail || [],
+          orderDetails,
           inventoryLots,
-        });
-        
+        })
+        const warehousePointCount = Array.isArray(orderDetails) ? orderDetails.length : 0
+
         return {
           ...serialized,
           customer_name: customerName,
           container_number: containerNumber,
+          warehouse_point_count: warehousePointCount,
           order_date: order?.order_date || null,
           eta_date: order?.eta_date || null,
           ready_date: order?.ready_date || null,
@@ -484,6 +493,7 @@ export async function GET(request: NextRequest) {
           warehouse_name: null,
           unload_method_name: null,
           delivery_progress: 0,
+          warehouse_point_count: 0,
         };
       }
     });

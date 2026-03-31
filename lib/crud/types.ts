@@ -89,6 +89,8 @@ export interface FieldConfig {
   hidden?: boolean // 标记为隐藏字段（如审计字段），不在前端显示
   readonly?: boolean // 标记为只读字段，用户不能编辑
   computed?: boolean // 标记为计算字段，由系统自动计算
+  /** 为 true 时不参与高级搜索生成（纯展示用计算列，无 DB 筛选） */
+  omitFromAdvancedSearch?: boolean
   // location 类型字段的特殊配置
   locationType?: string // 位置类型（如 'port', 'warehouse'），用于过滤位置选项
   // 筛选时是否多选（仅对 select 类型筛选生效）
@@ -140,7 +142,7 @@ export interface EntityConfig {
         enabled: boolean // 是否启用批量删除
       }
     }
-    // 行内编辑配置
+    // 行内编辑：与行操作「铅笔」同一套可编辑字段；可点击单元格进入草稿，支持多行草稿后点「保存修改」批量提交
     inlineEdit?: {
       enabled?: boolean // 是否启用行内编辑（默认 true，如果有 update 权限）
       fields?: string[] // 可编辑的字段列表（如果为空，则所有可更新字段都可编辑）

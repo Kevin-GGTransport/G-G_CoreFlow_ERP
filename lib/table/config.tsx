@@ -211,10 +211,9 @@ export function createTableColumns<TData>(
   if (actionsConfig && config.showActions !== false) {
     processedColumns.push({
       id: "actions",
-      // 权重偏大，避免整表按比例分配时操作列过窄；实际显示再配合 DataTable 的 minWidth
-      size: 560,
-      minSize: 240,
-      maxSize: 9999,
+      size: 200,
+      minSize: 120,
+      maxSize: 280,
       header: () => <div className="text-center">操作</div>,
       cell: ({ row }) => {
         const actions: React.ReactNode[] = []

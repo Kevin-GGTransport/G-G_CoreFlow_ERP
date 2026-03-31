@@ -8,7 +8,7 @@ import * as React from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { ColumnDef } from "@tanstack/react-table"
 import { Plus, Trash2, Edit, CheckCircle, XCircle, Upload } from "lucide-react"
-import { DataTable } from "@/components/data-table"
+import { DataTable, type InlineEditColumnWidthHint } from "@/components/data-table"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -39,9 +39,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 
 /** 未传 extraListParams 时使用同一引用。默认写 `= {}` 会在每次渲染新建对象，使 fetchData / URL 同步的依赖变化 → 无限请求 + 地址栏不停 replace（列表「跳」、数据被 Abort 覆盖）。 */
 const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {}
+
+/** 非编辑态：占满单元格可点区域，避免必须对准文字才能进入行内编辑 */
+function inlineEditDisplayHitAreaClass(fieldConfig: FieldConfig): string {
+  const alignEnd = fieldConfig.type === 'number' || fieldConfig.type === 'currency'
+  return cn(
+    'cursor-pointer -mx-0.5 min-h-8 h-full min-w-0 w-full self-stretch rounded-sm px-0.5',
+    'flex items-center hover:bg-muted/40',
+    alignEnd ? 'justify-end' : 'justify-center'
+  )
+}
 
 // 关系字段批量编辑组件（用于处理异步选项加载）
 function RelationFieldBatchEdit({
@@ -118,6 +129,250 @@ function RelationFieldBatchEdit({
   )
 }
 
+/** 与 handleSaveEdit 中关系字段映射一致，用于展示层解析 DB 外键列名 */
+function relationDbFieldNameForDisplay(fieldKey: string, fieldConfig: FieldConfig): string {
+  if (fieldConfig.relationField) return fieldConfig.relationField
+  if (fieldKey === 'received_by' || fieldKey === 'unloaded_by') return fieldKey
+  if (fieldKey === 'carrier') return 'carrier_id'
+  if (fieldKey === 'loaded_by_name') return 'loaded_by'
+  if (fieldKey === 'trailer_code') return 'trailer_code'
+  if (fieldKey.endsWith('_id')) return fieldKey
+  return `${fieldKey}_id`
+}
+
+function normalizeRelationDraftId(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
+  const s = String(v).trim()
+  if (s === '' || s === 'NaN') return null
+  return s
+}
+
+/**
+ * 关系字段行内草稿：非编辑态须显示草稿值 +「待保存」（原先 relation 分支忽略 dPref，承运公司等会一直显示旧名称）
+ */
+function RelationInlineDraftRowDisplay({
+  rowOriginal,
+  fieldKey,
+  fieldConfig,
+  draftRaw,
+  loadFuzzyOptions,
+  wrapIfEditable,
+  renderCommitted,
+}: {
+  rowOriginal: any
+  fieldKey: string
+  fieldConfig: FieldConfig
+  draftRaw: unknown
+  loadFuzzyOptions?: (search: string) => Promise<FuzzySearchOption[]>
+  wrapIfEditable: (node: React.ReactNode) => React.ReactNode
+  renderCommitted: () => React.ReactNode
+}) {
+  const dbField = relationDbFieldNameForDisplay(fieldKey, fieldConfig)
+  let draftId: string | null
+  if (typeof draftRaw === 'object' && draftRaw !== null && 'carrier_id' in draftRaw) {
+    draftId = normalizeRelationDraftId((draftRaw as { carrier_id?: unknown }).carrier_id)
+  } else {
+    draftId = normalizeRelationDraftId(draftRaw)
+  }
+
+  const originalId = (() => {
+    const top = normalizeRelationDraftId(rowOriginal[dbField])
+    if (top !== null) return top
+    if (fieldKey === 'carrier' && rowOriginal.carrier?.carrier_id != null) {
+      return normalizeRelationDraftId(rowOriginal.carrier.carrier_id)
+    }
+    if (fieldKey === 'customer' && rowOriginal.customer?.id != null) {
+      return normalizeRelationDraftId(rowOriginal.customer.id)
+    }
+    return null
+  })()
+
+  const dirty = (draftId ?? '') !== (originalId ?? '')
+
+  if (!dirty) {
+    return <>{renderCommitted()}</>
+  }
+
+  const [label, setLabel] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!loadFuzzyOptions || draftId === null) {
+      setLabel(null)
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    setLoading(true)
+    const run = async () => {
+      try {
+        let opts = await loadFuzzyOptions('')
+        if (cancelled) return
+        let found = opts.find((o) => String(o.value) === draftId)
+        if (!found) {
+          opts = await loadFuzzyOptions(draftId)
+          if (cancelled) return
+          found = opts.find((o) => String(o.value) === draftId)
+        }
+        setLabel(found?.label ?? null)
+      } catch {
+        if (!cancelled) setLabel(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [loadFuzzyOptions, draftId])
+
+  const displayText =
+    draftId === null
+      ? originalId !== null
+        ? '（已清空）'
+        : '—'
+      : loading
+        ? '加载中…'
+        : label || `${fieldConfig.label || fieldKey}（${draftId}）`
+
+  return wrapIfEditable(
+    <div className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1 text-amber-800 dark:text-amber-300 font-medium">
+      <span className="min-w-0 truncate">{displayText}</span>
+      <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">待保存</span>
+    </div>
+  )
+}
+
+/** 与 handleSaveEdit 中 location 分支一致 */
+function locationDbFieldForDisplay(fieldKey: string): string {
+  if (fieldKey === 'destination_location') return 'location_id'
+  if (fieldKey === 'location_id' || fieldKey === 'origin_location_id') return fieldKey
+  return `${fieldKey}_id`
+}
+
+function normalizeLocationIdForDisplay(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
+  const s = String(v).trim()
+  if (s === '' || s === 'NaN') return null
+  return s
+}
+
+/**
+ * location 行内草稿存 ID；与 relation 草稿态一致：琥珀色 +「待保存」。
+ * 先展示「标签（ID）」不阻塞，后台拉 /api/locations/:id 换成 code/name。
+ */
+function LocationInlineDisplayCell({
+  row,
+  fieldKey,
+  fieldConfig,
+  dPref,
+  wrapIfEditable,
+}: {
+  row: { original: any; getValue: (columnId: string) => unknown }
+  fieldKey: string
+  fieldConfig: FieldConfig
+  dPref: unknown
+  wrapIfEditable: (node: React.ReactNode) => React.ReactNode
+}) {
+  const rowOriginal = row.original
+  const dbField = locationDbFieldForDisplay(fieldKey)
+  const committedId = normalizeLocationIdForDisplay(rowOriginal[dbField])
+
+  let committedText: string | null = null
+  try {
+    const gv = row.getValue(fieldKey)
+    if (gv != null && String(gv).trim() !== '') committedText = String(gv)
+  } catch {
+    /* ignore */
+  }
+  if (
+    committedText == null &&
+    rowOriginal[fieldKey] != null &&
+    String(rowOriginal[fieldKey]).trim() !== ''
+  ) {
+    committedText = String(rowOriginal[fieldKey])
+  }
+
+  const wrapDirty = (main: React.ReactNode) =>
+    wrapIfEditable(
+      <div className="inline-flex min-w-0 max-w-full flex-wrap items-center gap-x-1 text-amber-800 dark:text-amber-300 font-medium">
+        <span className="min-w-0 truncate">{main}</span>
+        <span className="shrink-0 text-[10px] text-amber-600 dark:text-amber-400">待保存</span>
+      </div>
+    )
+
+  if (dPref === undefined) {
+    return wrapIfEditable(<div>{committedText || committedId || '-'}</div>)
+  }
+
+  const draftId = normalizeLocationIdForDisplay(dPref)
+
+  if ((draftId ?? '') === (committedId ?? '')) {
+    return wrapIfEditable(<div>{committedText || draftId || '-'}</div>)
+  }
+
+  if (draftId === null) {
+    return wrapDirty(committedId !== null ? '（已清空）' : '—')
+  }
+
+  const [resolved, setResolved] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    let cancelled = false
+    fetch(`/api/locations/${encodeURIComponent(draftId)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('not ok'))))
+      .then((raw) => {
+        if (cancelled) return
+        const loc = raw?.data ?? raw
+        const text =
+          (loc?.location_code != null && String(loc.location_code).trim() !== ''
+            ? String(loc.location_code)
+            : null) ??
+          (loc?.name != null ? String(loc.name) : null) ??
+          draftId
+        setResolved(text)
+      })
+      .catch(() => {
+        if (!cancelled) setResolved(draftId)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [draftId])
+
+  const displayText = resolved ?? `${fieldConfig.label || fieldKey}（${draftId}）`
+  return wrapDirty(displayText)
+}
+
+/** 行内编辑时按字段类型给列宽上下限，避免 date/弹层控件被 200px 封顶裁切 */
+function buildInlineEditColumnWidthHints(
+  columnIds: Set<string>,
+  fields: Record<string, FieldConfig>
+): Record<string, InlineEditColumnWidthHint> | undefined {
+  const hints: Record<string, InlineEditColumnWidthHint> = {}
+  for (const id of columnIds) {
+    const f = fields[id]
+    const t = f?.type
+    if (t === "date") {
+      // 与 InlineEditCell 固定 date 宽度 + 清空按钮一致；列本身勿再留大块空档
+      hints[id] = { min: 228, max: 252 }
+    } else if (t === "datetime") {
+      hints[id] =
+        id === "pickup_date"
+          ? { min: 360, max: 440 }
+          : { min: 312, max: 384 }
+    } else if (t === "textarea") {
+      hints[id] = { min: 240, max: 400 }
+    } else if (t === "location") {
+      // LocationSelect：图标 + 文案 + 清空 + chevron；过窄会只剩「选…」
+      hints[id] = { min: 300, max: 340 }
+    } else if (t === "relation") {
+      hints[id] = { min: 220, max: 288 }
+    }
+  }
+  return Object.keys(hints).length > 0 ? hints : undefined
+}
+
 interface EntityTableProps<T = any> {
   config: EntityConfig
   FormComponent?: React.ComponentType<any>
@@ -156,11 +411,20 @@ interface EntityTableProps<T = any> {
   extraListParams?: Record<string, string>
   /** 按列 id / accessorKey 覆盖单元格渲染（完全接管该列展示与交互，例如订单明细内联编辑） */
   customCellRenderers?: Partial<Record<string, (args: { row: any }) => React.ReactNode>>
+  /** 页面级草稿保存（如码头/板数批量保存）；会并入统计栏「保存修改」按钮 */
+  pageDraftSave?: {
+    count: number
+    saving?: boolean
+    onSave: () => Promise<boolean> | boolean
+    label?: string
+  }
   /** 换页/改每页条数前拦截（例如有未保存草稿）；confirm 返回 true 才应用分页 */
   paginationChangeGuard?: {
     shouldIntercept: () => boolean
     confirm: (intent: { nextPage: number; nextPageSize: number }) => Promise<boolean>
   }
+  /** 与行内编辑列宽放宽合并（如自定义列 `port_location` 不在 activeInlineFieldByRow 内） */
+  additionalInlineUnboundedColumnIds?: readonly string[]
 }
 
 export function EntityTable<T = any>({ 
@@ -187,7 +451,9 @@ export function EntityTable<T = any>({
   customFilterContent,
   extraListParams = EMPTY_EXTRA_LIST_PARAMS,
   customCellRenderers,
+  pageDraftSave,
   paginationChangeGuard,
+  additionalInlineUnboundedColumnIds,
 }: EntityTableProps<T>) {
   // 自动增强配置，生成 filterFields 和 advancedSearchFields（如果未配置）
   const enhancedConfig = React.useMemo(() => {
@@ -428,9 +694,21 @@ export function EntityTable<T = any>({
     setBatchEditValues(prev => ({ ...prev, [fieldKey]: value }))
   }, [])
   
-  // 行内编辑状态（只在客户端初始化，避免 hydration 错误）
-  const [editingRowId, setEditingRowId] = React.useState<string | number | null>(null)
-  const [editingValues, setEditingValues] = React.useState<Record<string, any>>({})
+  // 行内编辑：支持多行草稿（与铅笔编辑同一套字段），顶部可批量保存
+  const [draftRowIds, setDraftRowIds] = React.useState<string[]>([])
+  const draftValuesByRowRef = React.useRef<Record<string, Record<string, any>>>({})
+  /** 当前行内「正在编辑的单元格」对应的草稿字段键（与 draftValuesByRowRef 的 key 一致）；Excel 式一次只展开一列 */
+  const [activeInlineFieldByRow, setActiveInlineFieldByRow] = React.useState<
+    Record<string, string>
+  >({})
+  const inlineEditUnboundedColumnIds = React.useMemo(() => {
+    const s = new Set<string>(Object.values(activeInlineFieldByRow))
+    for (const id of additionalInlineUnboundedColumnIds ?? []) {
+      s.add(id)
+    }
+    return s
+  }, [activeInlineFieldByRow, additionalInlineUnboundedColumnIds])
+  const [savingAllDrafts, setSavingAllDrafts] = React.useState(false)
   const [isMounted, setIsMounted] = React.useState(false)
   
   // 确保只在客户端渲染编辑相关功能
@@ -653,6 +931,17 @@ export function EntityTable<T = any>({
   // 检查是否启用行内编辑（默认启用，如果有 update 权限）
   const inlineEditEnabled = config.list.inlineEdit?.enabled !== false && 
     config.permissions.update && config.permissions.update.length > 0
+  const inlineEditColumnWidthHints = React.useMemo(() => {
+    if (!inlineEditEnabled) return undefined
+    return buildInlineEditColumnWidthHints(
+      inlineEditUnboundedColumnIds,
+      enhancedConfig.fields
+    )
+  }, [inlineEditEnabled, inlineEditUnboundedColumnIds, enhancedConfig.fields])
+  const pageDraftCount = Math.max(0, pageDraftSave?.count ?? 0)
+  const hasAnyDraftsToSave = (inlineEditEnabled && draftRowIds.length > 0) || pageDraftCount > 0
+  const isSavingAnyDrafts = savingAllDrafts || Boolean(pageDraftSave?.saving)
+  const totalDraftCount = (inlineEditEnabled ? draftRowIds.length : 0) + pageDraftCount
   
   // 获取可编辑字段列表
   const editableFields = React.useMemo(() => {
@@ -668,27 +957,28 @@ export function EntityTable<T = any>({
     })
   }, [inlineEditEnabled, config.list.inlineEdit?.fields, config.fields, config.idField])
   
-  // 检查行是否正在编辑（只在客户端检查，避免 hydration 错误）
+  // 检查行是否处于草稿编辑中（只在客户端检查，避免 hydration 错误）
   const isRowEditing = React.useCallback((row: T): boolean => {
     if (!isMounted) return false // 服务器端始终返回 false
     const idField = getIdField()
-    const rowId = (row as any)[idField]
-    return editingRowId !== null && String(editingRowId) === String(rowId)
-  }, [editingRowId, config.idField, isMounted])
+    const rowId = String((row as any)[idField])
+    return draftRowIds.includes(rowId)
+  }, [draftRowIds, config.idField, isMounted])
   
-  // 开始编辑行
-  // 更新编辑值（使用 ref 存储，避免触发重新渲染）
-  const editingValuesRef = React.useRef<Record<string, any>>({})
-  
-  const handleStartEdit = React.useCallback((row: T) => {
+  const handleStartEdit = React.useCallback((row: T, focusFieldKey?: string) => {
     const idField = getIdField()
     const rowId = (row as any)[idField]
-    
-    // 检查是否有选中的行（使用函数式更新来获取最新值）
-    setSelectedRows((prevSelectedRows) => {
-      const hasSelectedRows = prevSelectedRows.length > 0
-      
-      // 初始化编辑值（只包含可编辑字段）
+    const idStr = String(rowId)
+    const resolveFocusKey = (): string => {
+      if (focusFieldKey && editableFields.includes(focusFieldKey)) {
+        return focusFieldKey
+      }
+      return editableFields[0] ?? ""
+    }
+    const focusKey = resolveFocusKey()
+
+    // 初始化编辑值（只包含可编辑字段）——仅在该行尚无草稿时写入，避免切换单元格时冲掉已改内容
+    const buildInitialValues = (): Record<string, any> => {
       const initialValues: Record<string, any> = {}
       editableFields.forEach(fieldKey => {
         // 处理字段名映射：parent_id -> parent, manager_id -> manager, location_id -> destination_location
@@ -782,66 +1072,68 @@ export function EntityTable<T = any>({
           initialValues[fieldKey] = (row as any)[fieldKey]
         }
       })
-      
-      // 如果有选中的行，延迟执行编辑相关的状态更新，确保清空选中行的操作先完成
-      if (hasSelectedRows) {
-        setTimeout(() => {
-          setEditingRowId(rowId)
-          setEditingValues(initialValues)
-          // 同时初始化 ref
-          editingValuesRef.current = { ...initialValues }
-        }, 10)
-      } else {
-        // 没有选中的行，直接执行编辑相关的状态更新
-        setEditingRowId(rowId)
-        setEditingValues(initialValues)
-        // 同时初始化 ref
-        editingValuesRef.current = { ...initialValues }
+      return initialValues
+    }
+
+    // 检查是否有选中的行（使用函数式更新来获取最新值）
+    setSelectedRows((prevSelectedRows) => {
+      const hasSelectedRows = prevSelectedRows.length > 0
+
+      const applyDraftAndFocus = () => {
+        if (!draftValuesByRowRef.current[idStr]) {
+          draftValuesByRowRef.current[idStr] = buildInitialValues()
+        }
+        setDraftRowIds((prev) => (prev.includes(idStr) ? prev : [...prev, idStr]))
+        // 全局仅一个「当前单元格」：避免多行同一列同时 InlineEdit + autoOpenDropdown 一起弹开
+        setActiveInlineFieldByRow({ [idStr]: focusKey })
       }
-      
-      // 返回空数组，清空所有选中的行（专业系统的做法）
+
+      if (hasSelectedRows) {
+        setTimeout(applyDraftAndFocus, 10)
+      } else {
+        applyDraftAndFocus()
+      }
+
       return []
     })
   }, [editableFields, config.idField, config.fields])
   
-  const handleEditValueChange = React.useCallback((fieldKey: string, value: any) => {
-    // 只更新 ref，不更新 state，避免触发重新渲染
-    editingValuesRef.current[fieldKey] = value
-    // 可选：如果需要实时显示，可以更新 state（但会导致重新渲染）
-    // setEditingValues(prev => ({ ...prev, [fieldKey]: value }))
+  const handleEditValueChange = React.useCallback((rowId: string, fieldKey: string, value: any) => {
+    if (!draftValuesByRowRef.current[rowId]) {
+      draftValuesByRowRef.current[rowId] = {}
+    }
+    draftValuesByRowRef.current[rowId][fieldKey] = value
   }, [])
+
+  /** 行内字段 onChange（按行隔离） */
+  const getFieldOnChange = React.useCallback(
+    (rowId: string, fieldKey: string) => (value: any) => {
+      handleEditValueChange(rowId, fieldKey, value)
+    },
+    [handleEditValueChange]
+  )
   
-  // 缓存字段 onChange 回调映射（使用稳定的函数引用）
-  const fieldOnChangeMap = React.useMemo(() => {
-    const map: Record<string, (value: any) => void> = {}
-    // 过滤掉审计字段
-    const displayColumns = filterAuditFields(config.list.columns, config.idField)
-    displayColumns.forEach(fieldKey => {
-      // 为每个字段创建一个稳定的闭包函数
-      map[fieldKey] = (value: any) => handleEditValueChange(fieldKey, value)
+  const clearDraftForRowId = React.useCallback((rowId: string) => {
+    delete draftValuesByRowRef.current[rowId]
+    setDraftRowIds((prev) => prev.filter((x) => x !== rowId))
+    setActiveInlineFieldByRow((prev) => {
+      const { [rowId]: _, ...rest } = prev
+      return rest
     })
-    // 同时为 editableFields 中的字段创建映射（包括 parent_id 和 manager_id）
-    editableFields.forEach(fieldKey => {
-      if (!map[fieldKey]) {
-        map[fieldKey] = (value: any) => handleEditValueChange(fieldKey, value)
-      }
-    })
-    return map
-  }, [config.list.columns, handleEditValueChange, editableFields])
-  
-  // 保存编辑
-  const handleSaveEdit = React.useCallback(async (row: T) => {
-    if (!editingRowId) return
-    
+  }, [])
+
+  // 保存单行草稿（铅笔或批量保存中调用）
+  const handleSaveEdit = React.useCallback(async (
+    row: T,
+    opts?: { skipFetch?: boolean; suppressToast?: boolean }
+  ) => {
+    const idField = getIdField()
+    const id = (row as any)[idField]
+    const rowId = String(id)
+    const currentEditingValues = draftValuesByRowRef.current[rowId]
+    if (!currentEditingValues) return
+
     try {
-      const idField = getIdField()
-      const id = (row as any)[idField]
-      
-      // 从 ref 获取最新的编辑值（编辑时只更新 ref，不更新 state）
-      const currentEditingValues = editingValuesRef.current
-      
-      // 在提交前，同步 ref 的值到 state，以便后续使用
-      setEditingValues(currentEditingValues)
       
       // 过滤掉未改变的字段，并处理日期字段和关系字段
       const updates: Record<string, any> = {}
@@ -892,39 +1184,46 @@ export function EntityTable<T = any>({
         }
         
         // 处理location字段：location字段在数据库中存储的是 ID，需要映射到正确的数据库字段名
+        // 外键多为 BigInt：禁止 Number() 比较/提交（与 relation 字段 normalizeFk 一致）
         if (fieldConfig?.type === 'location') {
-          // 对于location字段，确定数据库字段名
-          // location类型字段的数据库字段名通常是 {fieldKey}_id
-          // 例外：destination_location -> location_id, location_id -> location_id, origin_location_id -> origin_location_id
           let dbFieldName: string
           if (key === 'destination_location') {
             dbFieldName = 'location_id'
           } else if (key === 'location_id' || key === 'origin_location_id') {
-            // 如果 key 本身就是 _id 字段，直接使用
             dbFieldName = key
           } else {
             dbFieldName = `${key}_id`
           }
-          
-          const originalId = (row as any)[dbFieldName] || (row as any)[key]
-          
-          // 处理空值：空字符串、null、undefined 都转换为 null
-          let processedValue: number | null
+
+          const normalizeLocId = (v: any): string | null => {
+            if (v === null || v === undefined || v === '') return null
+            const s = String(v).trim()
+            if (s === '' || s === 'NaN') return null
+            return s
+          }
+
+          const originalId =
+            normalizeLocId((row as any)[dbFieldName]) ?? normalizeLocId((row as any)[key])
+
+          let processedValue: string | null
           if (value === '' || value === null || value === undefined) {
             processedValue = null
           } else {
-            const numValue = Number(value)
-            // 如果转换后是 NaN，设置为 null；如果是 0，也设置为 null（0 通常不是有效的 ID）
-            processedValue = (isNaN(numValue) || numValue === 0) ? null : numValue
+            processedValue = normalizeLocId(value)
           }
-          
-          // 比较处理后的值是否改变
-          const originalNum = originalId ? Number(originalId) : null
-          if (processedValue !== originalNum) {
-            // 使用数据库字段名（如 port_location_id）而不是配置字段名（如 port_location）
+
+          const shouldUpdate =
+            (processedValue ?? '') !== (originalId ?? '') ||
+            (processedValue !== null && originalId === null) ||
+            (processedValue === null && originalId !== null)
+
+          if (shouldUpdate) {
             updates[dbFieldName] = processedValue
             if (process.env.NODE_ENV === 'development') {
-              console.log(`[EntityTable] Location字段 ${key} -> ${dbFieldName} 更新:`, { original: originalNum, new: processedValue })
+              console.log(`[EntityTable] Location字段 ${key} -> ${dbFieldName} 更新:`, {
+                original: originalId,
+                new: processedValue,
+              })
             }
           }
           return // 跳过后续处理
@@ -954,8 +1253,15 @@ export function EntityTable<T = any>({
           } else {
             dbFieldName = `${key}_id`
           }
-          const originalId = (row as any)[dbFieldName] || (row as any)[key]
-          
+
+          /** BigInt 外键必须用字符串比较/提交，禁止 Number()（超过 MAX_SAFE_INTEGER 会丢精度 → 误判「未修改」→ 整段更新被跳过） */
+          const normalizeFk = (v: any): string | null => {
+            if (v === null || v === undefined || v === '') return null
+            const s = String(v).trim()
+            if (s === '' || s === 'NaN') return null
+            return s
+          }
+
           // 处理空值：空字符串、null、undefined 都转换为 null
           let processedValue: string | number | null
           if (value === '' || value === null || value === undefined) {
@@ -968,11 +1274,13 @@ export function EntityTable<T = any>({
             // trailer_code 是文本字段，直接使用字符串值
             processedValue = String(value)
           } else {
-            const numValue = Number(value)
-            // 如果转换后是 NaN，设置为 null；如果是 0，也设置为 null（0 通常不是有效的 ID）
-            processedValue = (isNaN(numValue) || numValue === 0) ? null : numValue
+            let v = value
+            if (typeof v === 'object' && v !== null && key === 'carrier' && 'carrier_id' in (v as any)) {
+              v = (v as any).carrier_id
+            }
+            processedValue = normalizeFk(v)
           }
-          
+
           // 比较处理后的值是否改变
           let originalValue: string | number | null = null
           if (key === 'unloaded_by' || key === 'received_by' || key === 'loaded_by_name') {
@@ -984,7 +1292,14 @@ export function EntityTable<T = any>({
             const originalTextValue = (row as any)[dbFieldName] || (row as any)['trailer_code']
             originalValue = originalTextValue !== undefined && originalTextValue !== null ? String(originalTextValue) : null
           } else {
-            originalValue = originalId ? Number(originalId) : null
+            let oldStr = normalizeFk((row as any)[dbFieldName])
+            if (oldStr === null && key === 'carrier' && (row as any).carrier?.carrier_id != null) {
+              oldStr = normalizeFk((row as any).carrier.carrier_id)
+            }
+            if (oldStr === null && key === 'customer' && (row as any).customer?.id != null) {
+              oldStr = normalizeFk((row as any).customer.id)
+            }
+            originalValue = oldStr
           }
           
           // 对于 unloaded_by, received_by, loaded_by_name，如果新值不为 null，或者原始值为 null 但新值不为 null，都需要更新
@@ -1084,21 +1399,23 @@ export function EntityTable<T = any>({
       })
       
       if (Object.keys(updates).length === 0) {
-        // 没有变化，直接取消编辑
-        setEditingRowId(null)
-        setEditingValues({})
-        toast.info('没有需要保存的更改')
+        clearDraftForRowId(rowId)
+        if (!opts?.suppressToast) {
+          toast.info('没有需要保存的更改')
+        }
         return
       }
       
       // 如果提供了自定义保存处理函数，使用自定义逻辑
       if (customSaveHandler) {
         await customSaveHandler(row, updates)
-        toast.success(`更新${config.displayName}成功`)
-        setEditingRowId(null)
-        setEditingValues({})
-        // 刷新数据
-        fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
+        clearDraftForRowId(rowId)
+        if (!opts?.suppressToast) {
+          toast.success(`更新${config.displayName}成功`)
+        }
+        if (!opts?.skipFetch) {
+          await fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
+        }
         return
       }
       
@@ -1160,15 +1477,13 @@ export function EntityTable<T = any>({
           const responseData = JSON.parse(responseText)
           console.log(`[EntityTable] 更新成功，响应数据:`, responseData)
           
-          // 如果API返回了更新后的数据（无论是否有 success 字段），直接更新本地数据，避免刷新整个列表
-          if (responseData.data && editingRowId) {
-            const idField = config.idField || 'id'
-            const rowId = String((row as any)[idField])
-            if (rowId === String(editingRowId)) {
-              // 更新当前行的数据
+          if (responseData.data) {
+            const idFieldMerge = config.idField || 'id'
+            const mergeRowId = String((row as any)[idFieldMerge])
+            if (mergeRowId === rowId) {
               setData((prevData) => {
                 const newData = prevData.map((item: any) => {
-                  const itemId = String(item[idField])
+                  const itemId = String(item[idFieldMerge])
                   if (itemId === rowId) {
                     // 合并更新后的数据，保留原有数据，只更新返回的字段
                     const updatedItem = { ...item }
@@ -1255,13 +1570,13 @@ export function EntityTable<T = any>({
                 })
                 return newData
               })
-              // 清除编辑状态
-              setEditingRowId(null)
-              setEditingValues({})
-              editingValuesRef.current = {}
-              toast.success(responseData.message || `更新${config.displayName}成功`)
-              // 刷新数据以显示最新状态
-              await fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
+              clearDraftForRowId(rowId)
+              if (!opts?.suppressToast) {
+                toast.success(responseData.message || `更新${config.displayName}成功`)
+              }
+              if (!opts?.skipFetch) {
+                await fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
+              }
               return
             }
           }
@@ -1271,33 +1586,94 @@ export function EntityTable<T = any>({
         }
       }
       
-      // 清除编辑状态
-      setEditingRowId(null)
-      setEditingValues({})
-      editingValuesRef.current = {}
-      
-      // 刷新数据（使用 await 确保完成）
-      try {
-        await fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
-        console.log(`[EntityTable] 数据刷新完成`)
-      } catch (refreshError) {
-        console.error(`[EntityTable] 数据刷新失败:`, refreshError)
-        // 即使刷新失败，也显示成功（因为更新可能已经成功）
+      clearDraftForRowId(rowId)
+      if (!opts?.suppressToast) {
+        toast.success(`更新${config.displayName}成功`)
       }
-      
-      toast.success(`更新${config.displayName}成功`)
+      if (!opts?.skipFetch) {
+        try {
+          await fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
+          console.log(`[EntityTable] 数据刷新完成`)
+        } catch (refreshError) {
+          console.error(`[EntityTable] 数据刷新失败:`, refreshError)
+        }
+      }
     } catch (error: any) {
       console.error(`[EntityTable] 更新${config.displayName}失败:`, error)
       console.error(`[EntityTable] 错误堆栈:`, error.stack)
       toast.error(error.message || `更新${config.displayName}失败`)
     }
-  }, [editingRowId, editingValues, config.apiPath, config.displayName, config.fields, config.idField, customSaveHandler, fetchData, page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic])
+  }, [clearDraftForRowId, config.apiPath, config.displayName, config.fields, config.idField, customSaveHandler, fetchData, page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic])
   
-  // 取消编辑
+  const handleSaveAllDrafts = React.useCallback(async () => {
+    if (draftRowIds.length === 0) return
+    setSavingAllDrafts(true)
+    try {
+      const idField = getIdField()
+      const snapshot = [...draftRowIds]
+      let ok = 0
+      let fail = 0
+      for (const rid of snapshot) {
+        const row = data.find((r) => String((r as any)[idField]) === rid)
+        if (!row) {
+          clearDraftForRowId(rid)
+          continue
+        }
+        try {
+          await handleSaveEdit(row, { skipFetch: true, suppressToast: true })
+          ok++
+        } catch {
+          fail++
+        }
+      }
+      await fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
+      if (fail === 0) {
+        toast.success(ok > 0 ? `已保存 ${ok} 行修改` : '已保存')
+      } else {
+        toast.warning(`已保存 ${ok} 行，${fail} 行失败（请检查后重试）`)
+      }
+    } finally {
+      setSavingAllDrafts(false)
+    }
+  }, [
+    draftRowIds,
+    data,
+    getIdField,
+    handleSaveEdit,
+    fetchData,
+    page,
+    pageSize,
+    sort,
+    order,
+    search,
+    filterValues,
+    advancedSearchValues,
+    advancedSearchLogic,
+    clearDraftForRowId,
+  ])
+
+  const handleUnifiedSaveDrafts = React.useCallback(async () => {
+    if (isSavingAnyDrafts) return
+    if (inlineEditEnabled && draftRowIds.length > 0) {
+      await handleSaveAllDrafts()
+    }
+    if (pageDraftSave && pageDraftCount > 0) {
+      await pageDraftSave.onSave()
+    }
+  }, [
+    isSavingAnyDrafts,
+    inlineEditEnabled,
+    draftRowIds.length,
+    handleSaveAllDrafts,
+    pageDraftSave,
+    pageDraftCount,
+  ])
+
+  // 取消编辑（清空所有草稿）
   const handleCancelEdit = React.useCallback(() => {
-    setEditingRowId(null)
-    setEditingValues({})
-    editingValuesRef.current = {}
+    draftValuesByRowRef.current = {}
+    setDraftRowIds([])
+    setActiveInlineFieldByRow({})
   }, [])
 
   // 处理查看详情
@@ -1729,32 +2105,29 @@ export function EntityTable<T = any>({
         
         // 创建新的 cell 渲染函数，支持行级编辑
         const newCell = ({ row }: { row: any }) => {
-          // 只在客户端且已挂载时检查编辑状态，避免 hydration 错误
+          const rowId = String(row.original[getIdField()])
+          const actualFieldKeyForEdit = (columnId === 'unloaded_by' || columnId === 'received_by')
+            ? columnId
+            : editableFields.includes(`${columnId}_id`) 
+              ? `${columnId}_id` 
+              : (columnId === 'parent' && editableFields.includes('parent_id'))
+                ? 'parent_id'
+                : (columnId === 'manager' && editableFields.includes('manager_id'))
+                  ? 'manager_id'
+                  : (columnId === 'department' && editableFields.includes('department_id'))
+                    ? 'department_id'
+                    : columnId
+          const cellIsActive = activeInlineFieldByRow[rowId] === actualFieldKeyForEdit
           const rowIsEditing = isMounted && isRowEditing(row.original)
-          
-          // 如果正在编辑，使用 InlineEditCell
-          if (rowIsEditing) {
-            // 直接使用 editingValues，但通过 key 确保组件正确更新
-            const currentValue = editingValues[columnId] !== undefined 
-              ? editingValues[columnId] 
-              : row.getValue(columnId)
-            // 确定实际使用的 fieldKey（用于 onChange 和 fieldLoadOptions）
-            // 如果 columnId 是 parent、manager 或 department，但 editableFields 中有对应的 _id 字段，使用后者
-            // 对于 unloaded_by 和 received_by，直接使用原字段名
-            const actualFieldKeyForEdit = (columnId === 'unloaded_by' || columnId === 'received_by')
-              ? columnId
-              : editableFields.includes(`${columnId}_id`) 
-                ? `${columnId}_id` 
-                : (columnId === 'parent' && editableFields.includes('parent_id'))
-                  ? 'parent_id'
-                  : (columnId === 'manager' && editableFields.includes('manager_id'))
-                    ? 'manager_id'
-                    : (columnId === 'department' && editableFields.includes('department_id'))
-                      ? 'department_id'
-                      : columnId
-            
-            // 获取字段的 loadOptions 和 loadFuzzyOptions 函数（如果提供）
-            // 注意：fieldLoadOptions 的 key 可能是 parent_id/manager_id/department_id/unloaded_by/received_by，但 columnId 可能是映射后的 parent/manager/department
+          const draft = draftValuesByRowRef.current[rowId]
+
+          if (rowIsEditing && cellIsActive) {
+            const currentValue = draft?.[actualFieldKeyForEdit] !== undefined
+              ? draft[actualFieldKeyForEdit]
+              : draft?.[columnId] !== undefined
+                ? draft[columnId]
+                : row.getValue(columnId)
+
             const loadOptionsKeyForEdit = columnId === 'parent' ? 'parent_id' 
               : columnId === 'manager' ? 'manager_id'
               : columnId === 'department' ? 'department_id'
@@ -1766,34 +2139,64 @@ export function EntityTable<T = any>({
             
             return (
               <InlineEditCell
-                key={`${row.original[getIdField()]}-${columnId}-${editingRowId}`}
+                key={`${rowId}-${columnId}-${draftRowIds.join(',')}`}
                 fieldKey={actualFieldKeyForEdit}
                 fieldConfig={fieldConfig}
                 value={currentValue}
-                onChange={fieldOnChangeMap[actualFieldKeyForEdit] || fieldOnChangeMap[columnId]}
+                onChange={getFieldOnChange(rowId, actualFieldKeyForEdit)}
                 loadOptions={loadOptionsForEdit}
                 loadFuzzyOptions={loadFuzzyOptionsForEdit}
+                autoOpenDropdown
               />
             )
           }
           
-          // 显示模式：如果有原始 cell 函数，使用它；否则使用默认显示
+          const openDraft = (e: React.MouseEvent) => {
+            e.stopPropagation()
+            if (!fieldConfig.readonly) handleStartEdit(row.original, actualFieldKeyForEdit)
+          }
+          const wrap = (node: React.ReactNode) => (
+            <div
+              role="button"
+              tabIndex={0}
+              className={inlineEditDisplayHitAreaClass(fieldConfig)}
+              onClick={openDraft}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  openDraft(e as unknown as React.MouseEvent)
+                }
+              }}
+            >
+              {node}
+            </div>
+          )
+
           if (originalCell) {
-            return typeof originalCell === 'function' 
+            const content = typeof originalCell === 'function' 
               ? originalCell({ row } as any)
               : originalCell
+            return fieldConfig.readonly ? content : wrap(content)
           }
           
-          // 默认显示：根据字段类型格式化
-          const value = row.getValue(columnId)
+          const draftVal =
+            draft?.[actualFieldKeyForEdit] !== undefined
+              ? draft[actualFieldKeyForEdit]
+              : draft?.[columnId] !== undefined
+                ? draft[columnId]
+                : undefined
+          const value = draftVal !== undefined ? draftVal : row.getValue(columnId)
           
           if (fieldConfig.type === 'date') {
-            return <div>{formatDateDisplay(value)}</div>
+            const node = <div>{formatDateDisplay(value)}</div>
+            return fieldConfig.readonly ? node : wrap(node)
           }
           if (fieldConfig.type === 'datetime') {
-            return <div>{formatDateTimeDisplay(value)}</div>
+            const node = <div>{formatDateTimeDisplay(value)}</div>
+            return fieldConfig.readonly ? node : wrap(node)
           }
-          return <div>{value || '-'}</div>
+          const node = <div>{value || '-'}</div>
+          return fieldConfig.readonly ? node : wrap(node)
         }
         
         // 返回新的列定义，使用新的 cell 渲染函数
@@ -1896,16 +2299,37 @@ export function EntityTable<T = any>({
         if (customCellRenderers?.[fieldKey]) {
           return <>{customCellRenderers[fieldKey]!({ row })}</>
         }
-        // 只在客户端且已挂载时检查编辑状态，避免 hydration 错误
+        const rowId = String(row.original[getIdField()])
+        // 与 editableFieldKey / 草稿、handleStartEdit(focus) 一致（含 destination/origin 等映射）
+        const draftFieldKey = editableFieldKey
+        const cellIsActive = activeInlineFieldByRow[rowId] === draftFieldKey
         const rowIsEditing = isMounted && isEditable && isRowEditing(row.original)
+
+        const wrapIfEditable = (node: React.ReactNode) => {
+          if (!isEditable || fieldConfig.readonly) return <>{node}</>
+          return (
+            <div
+              role="button"
+              tabIndex={0}
+              className={inlineEditDisplayHitAreaClass(fieldConfig)}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleStartEdit(row.original, draftFieldKey)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleStartEdit(row.original, draftFieldKey)
+                }
+              }}
+            >
+              {node}
+            </div>
+          )
+        }
         
-        // 如果正在编辑且字段可编辑，使用 InlineEditCell
-        // 但如果字段是只读的，直接显示值，不使用 InlineEditCell
-        if (rowIsEditing && !fieldConfig.readonly) {
-          // 使用初始值或 ref 中的值（编辑时主要使用内部状态，这里只是初始值）
-          let initialValue = editingValues[fieldKey] !== undefined 
-            ? editingValues[fieldKey] 
-            : row.getValue(fieldKey)
+        if (rowIsEditing && !fieldConfig.readonly && cellIsActive) {
+          let initialValue = row.getValue(fieldKey)
           
           // 对于location字段，从 _id 字段读取ID值
           if (fieldConfig.type === 'location') {
@@ -2016,28 +2440,7 @@ export function EntityTable<T = any>({
             }
           }
           
-          // 确定实际使用的 fieldKey（用于 onChange 和 fieldLoadOptions）
-          // 如果 fieldKey 是 parent、manager、department 或 carrier，优先使用 editableFields 中的字段名
-          // 对于 unloaded_by 和 received_by，直接使用原字段名
-          const actualFieldKeyForEdit = (fieldKey === 'unloaded_by' || fieldKey === 'received_by')
-            ? fieldKey
-            : (fieldKey === 'parent' && editableFields.includes('parent'))
-              ? 'parent'
-              : (fieldKey === 'parent' && editableFields.includes('parent_id'))
-                ? 'parent_id'
-                : (fieldKey === 'manager' && editableFields.includes('manager'))
-                  ? 'manager'
-                  : (fieldKey === 'manager' && editableFields.includes('manager_id'))
-                    ? 'manager_id'
-                    : (fieldKey === 'department' && editableFields.includes('department'))
-                      ? 'department'
-                      : (fieldKey === 'department' && editableFields.includes('department_id'))
-                        ? 'department_id'
-                        : (fieldKey === 'carrier' && editableFields.includes('carrier'))
-                          ? 'carrier' // carrier 字段在 editableFields 中就是 'carrier'，但实际保存时使用 carrier_id
-                          : editableFields.includes(`${fieldKey}_id`) 
-                            ? `${fieldKey}_id` 
-                            : fieldKey
+          const actualFieldKeyForEdit = draftFieldKey
           
           // 获取字段的 loadOptions 和 loadFuzzyOptions 函数（如果提供）
           // 注意：fieldLoadOptions 的 key 可能是 parent_id/manager_id/department_id/unloaded_by/received_by/carrier_id
@@ -2060,47 +2463,66 @@ export function EntityTable<T = any>({
           const effectiveType = fieldConfig.type === 'relation' && !loadOptions && !loadFuzzyOptions && fieldConfig.options
             ? 'select'
             : fieldConfig.type
+
+          const draft = draftValuesByRowRef.current[rowId]
+          if (draft) {
+            if (draft[actualFieldKeyForEdit] !== undefined) {
+              initialValue = draft[actualFieldKeyForEdit]
+            } else if (draft[fieldKey] !== undefined) {
+              initialValue = draft[fieldKey]
+            }
+          }
           
           return (
             <InlineEditCell
-              key={`${row.original[getIdField()]}-${fieldKey}-${editingRowId}`}
+              key={`${rowId}-${fieldKey}-${draftRowIds.join(',')}`}
               fieldKey={actualFieldKeyForEdit}
               fieldConfig={{ ...fieldConfig, type: effectiveType as any }}
               value={initialValue}
-              onChange={fieldOnChangeMap[actualFieldKeyForEdit] || fieldOnChangeMap[fieldKey]}
+              onChange={getFieldOnChange(rowId, actualFieldKeyForEdit)}
               loadOptions={loadOptions}
               loadFuzzyOptions={loadFuzzyOptions}
+              autoOpenDropdown
             />
           )
         }
         
-        // 显示模式：根据字段类型渲染
+        // 显示模式：根据字段类型渲染（可编辑列点击单元格进入与铅笔一致的草稿编辑）
+        const draftSnap = draftValuesByRowRef.current[rowId]
+        const dPref =
+          draftSnap == null
+            ? undefined
+            : draftSnap[draftFieldKey] !== undefined
+              ? draftSnap[draftFieldKey]
+              : draftSnap[fieldKey] !== undefined
+                ? draftSnap[fieldKey]
+                : undefined
+
         if (fieldConfig.type === 'badge') {
-          const value = row.getValue(fieldKey) as string
-          return (
+          const value = (dPref !== undefined ? dPref : row.getValue(fieldKey)) as string
+          return wrapIfEditable(
             <Badge variant={value === 'active' ? 'default' : 'secondary'}>
               {fieldConfig.options?.find(opt => opt.value === value)?.label || value}
             </Badge>
           )
         }
         if (fieldConfig.type === 'select') {
-          const value = row.getValue(fieldKey) as string
+          const value = (dPref !== undefined ? dPref : row.getValue(fieldKey)) as string
           const option = fieldConfig.options?.find(opt => opt.value === value)
           const displayText = option?.label || value || '-'
-          // 送仓性质为"扣货"时显示红色
           const isRedText = fieldKey === 'delivery_nature' && value === '扣货'
-          return (
+          return wrapIfEditable(
             <div className={isRedText ? 'text-red-600 dark:text-red-400 font-medium' : ''}>
               {displayText}
             </div>
           )
         }
         if (fieldConfig.type === 'currency') {
-          const value = row.getValue(fieldKey)
-          if (!value && value !== 0) return <div className="text-muted-foreground">-</div>
+          const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
+          if (!value && value !== 0) return wrapIfEditable(<div className="text-muted-foreground">-</div>)
           const numValue = typeof value === 'number' ? value : parseFloat(String(value))
-          if (isNaN(numValue)) return <div className="text-muted-foreground">-</div>
-          return (
+          if (isNaN(numValue)) return wrapIfEditable(<div className="text-muted-foreground">-</div>)
+          return wrapIfEditable(
             <div className="font-medium">
               ${numValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
@@ -2108,108 +2530,168 @@ export function EntityTable<T = any>({
         }
         
         if (fieldConfig.type === 'date') {
-          const value = row.getValue(fieldKey)
-          return <div>{formatDateDisplay(value)}</div>
+          const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
+          return wrapIfEditable(<div>{formatDateDisplay(value)}</div>)
         }
         
         if (fieldConfig.type === 'datetime') {
-          const value = row.getValue(fieldKey)
-          return <div>{formatDateTimeDisplay(value)}</div>
+          const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
+          return wrapIfEditable(<div>{formatDateTimeDisplay(value)}</div>)
         }
         
         if (fieldConfig.type === 'location') {
-          const value = row.getValue(fieldKey)
-          // location字段统一返回location_code字符串
-          return <div>{value || '-'}</div>
+          return (
+            <LocationInlineDisplayCell
+              row={row}
+              fieldKey={fieldKey}
+              fieldConfig={fieldConfig}
+              dPref={dPref}
+              wrapIfEditable={wrapIfEditable}
+            />
+          )
         }
         
         if (fieldConfig.type === 'relation') {
-          // 直接从 row.original 获取值，确保获取到的是原始数据
-          const originalValue = (row.original as any)[fieldKey]
-          
-          // 如果 value 是对象，尝试获取 displayField
-          if (originalValue && typeof originalValue === 'object') {
-            const displayValue = fieldConfig.relation?.displayField
-              ? (originalValue as any)?.[fieldConfig.relation.displayField]
-              : originalValue
-            return <div>{displayValue || '-'}</div>
-          }
-          
-          // value 是 ID（数字或字符串）或 null/undefined，从关联数据中获取显示值
-          // 检查是否有关联数据（如 users_inbound_receipt_received_byTousers）
-          // 支持多种关联数据命名模式
-          let relationData = null
-          
-          // 尝试多种可能的关联数据键名
-          // 特殊处理：loaded_by_name 字段对应的关联键是 users_outbound_shipments_loaded_byTousers
-          const possibleKeys: string[] = [
-            fieldKey === 'loaded_by_name' ? 'users_outbound_shipments_loaded_byTousers' : null,
-            `users_inbound_receipt_${fieldKey}Tousers`,
-            `users_outbound_shipments_${fieldKey}Tousers`,
-            `users_${fieldKey}Tousers`,
-            fieldConfig.relation?.model === 'users' && fieldKey === 'loaded_by_name' ? `users_outbound_shipments_loaded_byTousers` : null,
-            fieldConfig.relation?.model === 'users' && fieldKey !== 'loaded_by_name' ? `users_outbound_shipments_${fieldKey}Tousers` : null,
-            fieldConfig.relation?.model === 'trailers' ? 'trailers' : null,
-            fieldConfig.relation?.model === 'drivers' ? 'drivers' : null,
-          ].filter((key): key is string => key !== null && typeof key === 'string')
-          
-          for (const key of possibleKeys) {
-            if ((row.original as any)[key]) {
-              relationData = (row.original as any)[key]
-              break
+          const loadOptionsKeyForDraft =
+            draftFieldKey === 'parent_id'
+              ? 'parent_id'
+              : draftFieldKey === 'parent'
+                ? 'parent_id' in (fieldFuzzyLoadOptions || {})
+                  ? 'parent_id'
+                  : 'parent'
+                : draftFieldKey === 'manager_id'
+                  ? 'manager_id'
+                  : draftFieldKey === 'manager'
+                    ? 'manager_id' in (fieldFuzzyLoadOptions || {})
+                      ? 'manager_id'
+                      : 'manager'
+                    : draftFieldKey === 'department_id'
+                      ? 'department_id'
+                      : draftFieldKey === 'department'
+                        ? 'department_id' in (fieldFuzzyLoadOptions || {})
+                          ? 'department_id'
+                          : 'department'
+                        : draftFieldKey === 'unloaded_by'
+                          ? 'unloaded_by'
+                          : draftFieldKey === 'received_by'
+                            ? 'received_by'
+                            : draftFieldKey === 'carrier_id'
+                              ? 'carrier_id'
+                              : fieldKey === 'carrier'
+                                ? 'carrier'
+                                : draftFieldKey
+
+          const loadFuzzyForDraft =
+            fieldFuzzyLoadOptions?.[loadOptionsKeyForDraft] ||
+            fieldFuzzyLoadOptions?.[fieldKey] ||
+            (draftFieldKey === 'department' ? fieldFuzzyLoadOptions?.['department_id'] : undefined)
+
+          const renderRelationCommitted = () => {
+            // 直接从 row.original 获取值，确保获取到的是原始数据
+            const originalValue = (row.original as any)[fieldKey]
+
+            // 如果 value 是对象，尝试获取 displayField
+            if (originalValue && typeof originalValue === 'object') {
+              const displayValue = fieldConfig.relation?.displayField
+                ? (originalValue as any)?.[fieldConfig.relation.displayField]
+                : originalValue
+              return wrapIfEditable(<div>{displayValue || '-'}</div>)
             }
-          }
-          
-          // 如果还是没找到，尝试直接使用 relation.model 作为键名
-          if (!relationData && fieldConfig.relation?.model) {
-            let modelKey: string | null = null
-            if (fieldConfig.relation.model === 'users') {
-              // 特殊处理：loaded_by_name 字段对应的关联键是 users_outbound_shipments_loaded_byTousers
-              modelKey = fieldKey === 'loaded_by_name' ? 'users_outbound_shipments_loaded_byTousers' : null
-            } else if (fieldConfig.relation.model === 'trailers') {
-              modelKey = 'trailers'
-            } else if (fieldConfig.relation.model === 'drivers') {
-              modelKey = 'drivers'
+
+            // value 是 ID（数字或字符串）或 null/undefined，从关联数据中获取显示值
+            let relationData = null
+
+            const possibleKeys: string[] = [
+              fieldKey === 'loaded_by_name' ? 'users_outbound_shipments_loaded_byTousers' : null,
+              `users_inbound_receipt_${fieldKey}Tousers`,
+              `users_outbound_shipments_${fieldKey}Tousers`,
+              `users_${fieldKey}Tousers`,
+              fieldConfig.relation?.model === 'users' && fieldKey === 'loaded_by_name'
+                ? `users_outbound_shipments_loaded_byTousers`
+                : null,
+              fieldConfig.relation?.model === 'users' && fieldKey !== 'loaded_by_name'
+                ? `users_outbound_shipments_${fieldKey}Tousers`
+                : null,
+              fieldConfig.relation?.model === 'trailers' ? 'trailers' : null,
+              fieldConfig.relation?.model === 'drivers' ? 'drivers' : null,
+              fieldConfig.relation?.model === 'carriers' ? 'carrier' : null,
+              fieldConfig.relation?.model === 'customers' ? 'customer' : null,
+            ].filter((key): key is string => key !== null && typeof key === 'string')
+
+            for (const key of possibleKeys) {
+              if ((row.original as any)[key]) {
+                relationData = (row.original as any)[key]
+                break
+              }
             }
-            if (modelKey && (row.original as any)[modelKey]) {
-              relationData = (row.original as any)[modelKey]
+
+            if (!relationData && fieldConfig.relation?.model) {
+              let modelKey: string | null = null
+              if (fieldConfig.relation.model === 'users') {
+                modelKey = fieldKey === 'loaded_by_name' ? 'users_outbound_shipments_loaded_byTousers' : null
+              } else if (fieldConfig.relation.model === 'trailers') {
+                modelKey = 'trailers'
+              } else if (fieldConfig.relation.model === 'drivers') {
+                modelKey = 'drivers'
+              } else if (fieldConfig.relation.model === 'carriers') {
+                modelKey = 'carrier'
+              } else if (fieldConfig.relation.model === 'customers') {
+                modelKey = 'customer'
+              }
+              if (modelKey && (row.original as any)[modelKey]) {
+                relationData = (row.original as any)[modelKey]
+              }
             }
-          }
-          
-          // 尝试从关联数据中获取显示值
-          if (relationData) {
-            // 优先使用配置的displayField（通常是full_name）
-            const displayField = fieldConfig.relation?.displayField || 'full_name'
-            const displayValue = relationData[displayField] || relationData.full_name || relationData.username || relationData.trailer_code || relationData.driver_code
-            if (displayValue) {
-              return <div>{displayValue}</div>
+
+            if (relationData) {
+              const displayField = fieldConfig.relation?.displayField || 'full_name'
+              const displayValue =
+                relationData[displayField] ||
+                relationData.full_name ||
+                relationData.username ||
+                relationData.trailer_code ||
+                relationData.driver_code
+              if (displayValue) {
+                return wrapIfEditable(<div>{displayValue}</div>)
+              }
             }
+
+            if (originalValue && typeof originalValue === 'string') {
+              return wrapIfEditable(<div>{originalValue}</div>)
+            }
+
+            if (!originalValue) {
+              return wrapIfEditable(<div>-</div>)
+            }
+
+            return wrapIfEditable(<div>{String(originalValue)}</div>)
           }
-          
-          // 如果 value 是字符串（可能是显示值），直接显示
-          if (originalValue && typeof originalValue === 'string') {
-            return <div>{originalValue}</div>
+
+          if (dPref !== undefined) {
+            return (
+              <RelationInlineDraftRowDisplay
+                rowOriginal={row.original as any}
+                fieldKey={fieldKey}
+                fieldConfig={fieldConfig}
+                draftRaw={dPref}
+                loadFuzzyOptions={loadFuzzyForDraft}
+                wrapIfEditable={wrapIfEditable}
+                renderCommitted={renderRelationCommitted}
+              />
+            )
           }
-          
-          // 如果 value 是 null 或 undefined，显示 "-"
-          if (!originalValue) {
-            return <div>-</div>
-          }
-          
-          // 如果有ID但没有关联数据，显示ID（这不应该发生，但如果发生了，至少显示ID）
-          // 注意：这通常意味着API没有返回关联数据，需要检查API的include配置
-          return <div>{String(originalValue)}</div>
+
+          return renderRelationCommitted()
         }
         
         if (fieldConfig.type === 'boolean') {
-          const value = row.getValue(fieldKey)
+          const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
           const boolValue = value === true || value === 'true' || value === 1 || value === '1'
           // 如果正在编辑但字段是只读的，显示为只读文本
           if (rowIsEditing && fieldConfig.readonly) {
             return <div className="text-sm">{boolValue ? '是' : '否'}</div>
           }
-          // 正常显示模式：使用图标
-          return (
+          return wrapIfEditable(
             <div className="flex items-center justify-center">
               {boolValue ? (
                 <CheckCircle className="h-4 w-4 text-green-500" />
@@ -2222,10 +2704,10 @@ export function EntityTable<T = any>({
         
         // 特殊处理：未约板数 < 0 时红色显示
         if (fieldKey === 'unbooked_pallet_count' || fieldKey === 'unbooked_pallets') {
-          const value = row.getValue(fieldKey)
+          const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
           const numValue = typeof value === 'number' ? value : (value !== null && value !== undefined ? parseFloat(String(value)) : null)
           const isNegative = numValue !== null && !isNaN(numValue) && numValue < 0
-          return (
+          return wrapIfEditable(
             <div className={isNegative ? 'text-red-600 font-semibold' : ''}>
               {numValue !== null && !isNaN(numValue) ? numValue.toLocaleString() : '-'}
             </div>
@@ -2315,20 +2797,22 @@ export function EntityTable<T = any>({
         }
         
         if (fieldConfig.type === 'number') {
-          const value = row.getValue(fieldKey)
-          if (value === null || value === undefined) return <div className="text-muted-foreground">-</div>
-          const numValue = typeof value === 'number' ? value : parseFloat(String(value))
-          if (isNaN(numValue)) return <div className="text-muted-foreground">-</div>
-          // 特殊处理：如果是 capacity_cbm 或 container_volume，显示 CBM 单位
-          if (fieldKey === 'capacity_cbm' || fieldKey === 'container_volume') {
-            return <div>{numValue.toLocaleString()} CBM</div>
+          const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
+          if (value === null || value === undefined) {
+            return wrapIfEditable(<div className="text-muted-foreground">-</div>)
           }
-          return <div>{numValue.toLocaleString()}</div>
+          const numValue = typeof value === 'number' ? value : parseFloat(String(value))
+          if (isNaN(numValue)) {
+            return wrapIfEditable(<div className="text-muted-foreground">-</div>)
+          }
+          if (fieldKey === 'capacity_cbm' || fieldKey === 'container_volume') {
+            return wrapIfEditable(<div>{numValue.toLocaleString()} CBM</div>)
+          }
+          return wrapIfEditable(<div>{numValue.toLocaleString()}</div>)
         }
         
-        // 默认文本显示
-        const value = row.getValue(fieldKey)
-        return <div>{value?.toString() || '-'}</div>
+        const value = dPref !== undefined ? dPref : row.getValue(fieldKey)
+        return wrapIfEditable(<div>{value?.toString() || '-'}</div>)
       }
     }
     
@@ -2346,12 +2830,13 @@ export function EntityTable<T = any>({
     editableFields,
     isMounted,
     isRowEditing,
-    editingRowId,
-    // 注意：不包含 editingValues，因为编辑时使用内部状态，只在提交时更新
-    // 这样可以避免每次输入都重新创建列定义，导致输入框失去焦点
+    draftRowIds,
+    activeInlineFieldByRow,
     handleEditValueChange,
+    getFieldOnChange,
+    handleStartEdit,
     fieldLoadOptions,
-    fieldOnChangeMap,
+    fieldFuzzyLoadOptions,
     getIdField,
     customCellRenderers,
   ])
@@ -2432,8 +2917,7 @@ export function EntityTable<T = any>({
     editableFields,
     isMounted,
     isRowEditing,
-    editingRowId,
-    editingValues,
+    draftRowIds,
     handleStartEdit,
     handleSaveEdit,
     handleCancelEdit,
@@ -2516,8 +3000,20 @@ export function EntityTable<T = any>({
       
       {/* 统计信息和批量操作工具栏 */}
       <div className="flex items-center justify-between px-0.5">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
           <span>共 <span className="font-semibold text-foreground">{total}</span> 条记录</span>
+          {hasAnyDraftsToSave && (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={isSavingAnyDrafts}
+              className="h-8 min-w-[120px] bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={() => void handleUnifiedSaveDrafts()}
+            >
+              {isSavingAnyDrafts ? "保存中…" : `${pageDraftSave?.label ?? "保存修改"} (${totalDraftCount})`}
+            </Button>
+          )}
           {batchOpsEnabled && selectedRows.length > 0 && (
             <span className="ml-4 text-blue-600 dark:text-blue-400 font-medium">
               已选择 <span className="font-bold">{selectedRows.length}</span> 条
@@ -2569,6 +3065,12 @@ export function EntityTable<T = any>({
         columns={columns}
         data={data}
         loading={loading}
+        inlineEditUnboundedColumnIds={
+          inlineEditEnabled ? inlineEditUnboundedColumnIds : undefined
+        }
+        inlineEditColumnWidthHints={
+          inlineEditEnabled ? inlineEditColumnWidthHints : undefined
+        }
         page={page}
         pageSize={pageSize}
         total={total}
@@ -2610,7 +3112,8 @@ export function EntityTable<T = any>({
         selectedRows={selectedRows}
         getIdValue={getIdValue}
         isRowEditing={inlineEditEnabled ? isRowEditing : undefined}
-        onCancelEdit={inlineEditEnabled && editingRowId !== null ? handleCancelEdit : undefined}
+        onCancelEdit={inlineEditEnabled && draftRowIds.length > 0 ? handleCancelEdit : undefined}
+        cancelEditOnSelectionChange={inlineEditEnabled ? false : true}
         expandableRows={expandableRows}
         enableViewManager={true}
         viewManagerTableName={config.name}

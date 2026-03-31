@@ -866,22 +866,14 @@ export function OrderDetailTable() {
       customClickableColumns={customClickableColumns}
       customActions={customActions}
       customBatchActions={customBatchActions}
+      pageDraftSave={{
+        count: Object.keys(palletDrafts).length,
+        saving: savingPallets,
+        onSave: savePalletDraftsToServer,
+      }}
       paginationChangeGuard={paginationChangeGuard}
       customToolbarButtons={
         <>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-9 border-emerald-600 text-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-            disabled={Object.keys(palletDrafts).length === 0 || savingPallets}
-            onClick={() => void savePalletDraftsToServer()}
-          >
-            保存本页修改
-            {Object.keys(palletDrafts).length > 0
-              ? ` (${Object.keys(palletDrafts).length})`
-              : ""}
-          </Button>
           <IncludeArchivedOrdersToggle
             checked={includeArchived}
             onCheckedChange={setIncludeArchived}

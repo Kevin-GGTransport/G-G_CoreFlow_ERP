@@ -75,7 +75,17 @@ export async function GET(request: NextRequest) {
         where.orders = where.orders ? { ...where.orders, ...searchCondition } : searchCondition
       }
 
-      if (searchParams.get('lfd_no_pickup') === '1') {
+      if (searchParams.get('pending_lfd_inquiry') === '1') {
+        const pendingInquiryFilter = {
+          lfd_date: null,
+          pickup_date: null,
+        }
+        if (where.orders) {
+          where.orders = { AND: [where.orders, pendingInquiryFilter] }
+        } else {
+          where.orders = pendingInquiryFilter
+        }
+      } else if (searchParams.get('lfd_no_pickup') === '1') {
         const lfdPickupFilter = {
           lfd_date: { not: null },
           pickup_date: null,
@@ -104,12 +114,17 @@ export async function GET(request: NextRequest) {
       'updated_at',
     ]
     const orderBy: any =
-      !exportAll && searchParams.get('lfd_no_pickup') === '1'
+      !exportAll && searchParams.get('pending_lfd_inquiry') === '1'
         ? [
-            { orders: { lfd_date: 'asc' } },
+            { orders: { eta_date: 'asc' } },
             { earliest_appointment_time: 'asc' },
           ]
-        : sort === 'earliest_appointment_time'
+        : !exportAll && searchParams.get('lfd_no_pickup') === '1'
+          ? [
+              { orders: { lfd_date: 'asc' } },
+              { earliest_appointment_time: 'asc' },
+            ]
+          : sort === 'earliest_appointment_time'
           ? { orders: { appointment_time: order } }
           : mainTableFields.includes(sort)
             ? { [sort]: order }

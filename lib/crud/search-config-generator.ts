@@ -138,6 +138,10 @@ export function generateAdvancedSearchFields(config: EntityConfig): AdvancedSear
     if (fieldConfig.hidden) {
       return
     }
+
+    if (fieldConfig.omitFromAdvancedSearch) {
+      return
+    }
     
     // 根据字段类型映射到高级搜索类型
     let searchType: AdvancedSearchFieldConfig['type'] | null = null

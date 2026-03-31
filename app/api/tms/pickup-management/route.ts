@@ -95,8 +95,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 有 LFD、尚未填提柜日期（与前端「LFD待提柜」按钮一致）
-    if (searchParams.get('lfd_no_pickup') === '1') {
+    // 快速筛选互斥：待查询（无 LFD、无提柜）优先于待提柜（有 LFD、无提柜）
+    if (searchParams.get('pending_lfd_inquiry') === '1') {
+      const pendingInquiryFilter = {
+        lfd_date: null,
+        pickup_date: null,
+      }
+      if (where.orders) {
+        where.orders = { AND: [where.orders, pendingInquiryFilter] }
+      } else {
+        where.orders = pendingInquiryFilter
+      }
+    } else if (searchParams.get('lfd_no_pickup') === '1') {
       const lfdPickupFilter = {
         lfd_date: { not: null },
         pickup_date: null,
@@ -123,7 +133,12 @@ export async function GET(request: NextRequest) {
     // 构建排序条件
     let orderBy: any
 
-    if (searchParams.get('lfd_no_pickup') === '1') {
+    if (searchParams.get('pending_lfd_inquiry') === '1') {
+      orderBy = [
+        { orders: { eta_date: 'asc' } },
+        { earliest_appointment_time: 'asc' },
+      ]
+    } else if (searchParams.get('lfd_no_pickup') === '1') {
       // LFD 升序；同日 LFD 按最早预约时间（pickup_management.earliest_appointment_time）升序
       orderBy = [
         { orders: { lfd_date: 'asc' } },
