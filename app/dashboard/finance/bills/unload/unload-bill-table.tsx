@@ -121,7 +121,7 @@ export function UnloadBillTable() {
         </Button>
         <Button variant="outline" size="sm" className="h-9 rounded-lg" onClick={handleExportByPerson}>
           <FileDown className="mr-2 h-4 w-4" />
-          导出（按拆柜人员分类）
+          导出（按卸货工人分类）
         </Button>
       </div>
     ),

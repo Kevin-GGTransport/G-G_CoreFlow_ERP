@@ -1,5 +1,5 @@
 /**
- * 拆柜账单（财务管理）- 数据与接口仍为 /api/wms/unload-bills
+ * 卸货工人账单（财务管理）- 数据与接口仍为 /api/wms/unload-bills
  */
 
 import { auth } from '@/auth';

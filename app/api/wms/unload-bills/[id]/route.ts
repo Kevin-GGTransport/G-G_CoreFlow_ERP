@@ -4,7 +4,7 @@ import prisma from '@/lib/prisma';
 
 const ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_operator', 'wms_operator'];
 
-/** PATCH 更新拆柜账单（id 为 inbound_receipt_id，按入库单更新金额，无则创建） */
+/** PATCH 更新卸货工人账单（id 为 inbound_receipt_id，按入库单更新金额，无则创建） */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,13 +46,13 @@ export async function PATCH(
   } catch (e) {
     console.error('[unload-bills PATCH]', e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : '更新拆柜账单失败' },
+      { error: e instanceof Error ? e.message : '更新卸货工人账单失败' },
       { status: 500 }
     );
   }
 }
 
-/** DELETE 删除拆柜账单（id 为 inbound_receipt_id） */
+/** DELETE 删除卸货工人账单（id 为 inbound_receipt_id） */
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -71,7 +71,7 @@ export async function DELETE(
   } catch (e) {
     console.error('[unload-bills DELETE]', e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : '删除拆柜账单失败' },
+      { error: e instanceof Error ? e.message : '删除卸货工人账单失败' },
       { status: 500 }
     );
   }

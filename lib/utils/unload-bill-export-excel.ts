@@ -1,5 +1,5 @@
 /**
- * 拆柜账单导出 Excel（按拆柜人员分组）
+ * 卸货工人账单导出 Excel（按卸货工人分组）
  */
 
 import ExcelJS from 'exceljs';
@@ -13,16 +13,16 @@ export interface UnloadBillExportRow {
 }
 
 /**
- * 按拆柜人员分组生成 Excel
- * @param grouped  key = 拆柜人员名称, value = 该人员下的行
+ * 按卸货工人分组生成 Excel
+ * @param grouped  key = 卸货工人名称, value = 该人员下的行
  * @param filename 文件名（不含扩展名）
  */
 export async function generateUnloadBillExportExcel(
   grouped: Map<string, UnloadBillExportRow[]>,
-  filename: string = '拆柜账单'
+  filename: string = '卸货工人账单'
 ): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('拆柜账单（按拆柜人员）', {
+  const sheet = workbook.addWorksheet('卸货工人账单（按卸货工人）', {
     views: [{ state: 'frozen', xSplit: 0, ySplit: 0 }],
   });
 
@@ -49,7 +49,7 @@ export async function generateUnloadBillExportExcel(
     sheet.getCell(currentRow, 2).value = '总箱数';
     sheet.getCell(currentRow, 3).value = '拆柜日期';
     sheet.getCell(currentRow, 4).value = '价格';
-    sheet.getCell(currentRow, 5).value = '拆柜人员';
+    sheet.getCell(currentRow, 5).value = '卸货工人';
     [1, 2, 3, 4, 5].forEach((c) => {
       sheet.getCell(currentRow, c).style = headerStyle;
     });

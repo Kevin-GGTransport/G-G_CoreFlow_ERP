@@ -6,7 +6,7 @@ import { mergeOrdersRelationExcludeArchived, parseIncludeArchived } from '@/lib/
 
 const UNLOAD_BILL_LIST_ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_operator', 'wms_operator'];
 
-/** GET 拆柜账单列表：从入库管理自动提取，支持分页、排序、筛选 */
+/** GET 卸货工人账单列表：从入库管理自动提取，支持分页、排序、筛选 */
 export async function GET(request: NextRequest) {
   try {
     const permissionResult = await checkPermission(UNLOAD_BILL_LIST_ROLES, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
@@ -121,13 +121,13 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     console.error('[unload-bills GET]', e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : '获取拆柜账单失败' },
+      { error: e instanceof Error ? e.message : '获取卸货工人账单失败' },
       { status: 500 }
     );
   }
 }
 
-/** POST 创建或更新拆柜账单金额（按入库单，用于后续编辑价格） */
+/** POST 创建或更新卸货工人账单金额（按入库单，用于后续编辑价格） */
 export async function POST(request: NextRequest) {
   try {
     const permissionResult = await checkPermission(UNLOAD_BILL_LIST_ROLES, WMS_FULL_ACCESS_PERMISSION_OPTIONS);
@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
   } catch (e) {
     console.error('[unload-bills POST]', e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : '保存拆柜账单失败' },
+      { error: e instanceof Error ? e.message : '保存卸货工人账单失败' },
       { status: 500 }
     );
   }

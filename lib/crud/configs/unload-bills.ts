@@ -1,13 +1,13 @@
 /**
- * 拆柜账单实体配置 - 数据来自入库管理，每条入库单一条
+ * 卸货工人账单实体配置 - 数据来自入库管理，每条入库单一条
  */
 
 import { EntityConfig } from '../types';
 
 export const unloadBillConfig: EntityConfig = {
   name: 'unload_bill',
-  displayName: '拆柜账单',
-  pluralName: '拆柜账单',
+  displayName: '卸货工人账单',
+  pluralName: '卸货工人账单',
 
   apiPath: '/api/wms/unload-bills',
   detailPath: '/dashboard/wms/inbound-receipts',
@@ -54,13 +54,13 @@ export const unloadBillConfig: EntityConfig = {
     },
     unloaded_by_id: {
       key: 'unloaded_by_id',
-      label: '拆柜人员ID',
+      label: '卸货工人ID',
       type: 'text',
       hidden: true,
     },
     unloaded_by_name: {
       key: 'unloaded_by_name',
-      label: '拆柜人员',
+      label: '卸货工人',
       type: 'text',
       sortable: true,
     },
@@ -81,7 +81,7 @@ export const unloadBillConfig: EntityConfig = {
       },
       {
         field: 'unloaded_by',
-        label: '拆柜人员',
+        label: '卸货工人',
         type: 'select',
         relation: {
           model: 'users',

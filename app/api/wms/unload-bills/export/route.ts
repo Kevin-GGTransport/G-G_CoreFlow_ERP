@@ -8,7 +8,7 @@ import { generateUnloadBillExportExcel, UnloadBillExportRow } from '@/lib/utils/
 const ROLES = ['admin', 'wms_manager', 'tms_manager', 'employee', 'user', 'oms_operator', 'wms_operator'];
 
 /**
- * GET 导出拆柜账单 Excel，按拆柜人员分组
+ * GET 导出卸货工人账单 Excel，按卸货工人分组
  * 查询参数与列表一致：search, filter_planned_unload_at_from, filter_planned_unload_at_to, filter_unloaded_by
  */
 export async function GET(request: NextRequest) {
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `拆柜账单_按拆柜人员_${timestamp}`;
+    const filename = `卸货工人账单_按卸货工人_${timestamp}`;
     const workbook = await generateUnloadBillExportExcel(grouped, filename);
     const buffer = await workbook.xlsx.writeBuffer();
 
