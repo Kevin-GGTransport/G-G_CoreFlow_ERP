@@ -593,7 +593,7 @@ model order_detail_item {
 
 model orders {
   order_id                                         BigInt                    @id @default(autoincrement())
-  /// 柜号唯一性：仅对非「完成留档」行生效，见迁移 partial unique index（archived 可重复同号）
+  /// 柜号唯一性：仅对非「完成留档」且非「已取消」行生效，见迁移 partial unique index（archived/cancelled 可重复同号）
   order_number                                     String                    @db.VarChar(50)
   customer_id                                      BigInt?
   user_id                                          BigInt?

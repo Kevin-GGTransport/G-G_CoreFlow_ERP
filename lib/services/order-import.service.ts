@@ -15,6 +15,10 @@ import {
   OrderImportRow,
 } from '@/lib/validations/order-import'
 import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date'
+import {
+  ORDER_STATUS_ARCHIVED,
+  ORDER_STATUS_CANCELLED,
+} from '@/lib/orders/order-visibility'
 
 /**
  * 主数据（用于验证和关联）
@@ -200,13 +204,16 @@ const orderImportConfig: ImportConfig<OrderImportRow> = {
       }
     }
 
-    // 第5步：检查订单号是否与「未完成留档」的订单冲突（仅 archived 的同号可再次导入）
+    // 第5步：检查订单号是否与「在营」订单冲突（完成留档 / 已取消 的同号可再次导入，与柜号 partial unique 一致）
     if (errors.length === 0) {
       const orderNumbers = Array.from(orderGroups.keys())
       const existingOrders = await prisma.orders.findMany({
         where: {
           order_number: { in: orderNumbers },
-          NOT: { status: 'archived' },
+          AND: [
+            { NOT: { status: ORDER_STATUS_ARCHIVED } },
+            { NOT: { status: ORDER_STATUS_CANCELLED } },
+          ],
         },
         select: { order_number: true },
       })
@@ -218,7 +225,7 @@ const orderImportConfig: ImportConfig<OrderImportRow> = {
           errors.push({
             row: firstRow.rowIndex,
             field: 'order_number',
-            message: `订单号"${orderNumber}"已存在（未完成留档），请勿重复导入`,
+            message: `订单号"${orderNumber}"已存在（非留档且非取消），请勿重复导入`,
           })
         })
       }

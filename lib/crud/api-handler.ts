@@ -25,7 +25,7 @@ import { enhanceConfigWithSearchFields } from './search-config-generator'
 import prisma from '@/lib/prisma'
 import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date'
 import {
-  ORDER_STATUS_ARCHIVED,
+  ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS,
   ORDER_STATUS_CANCELLED,
   parseIncludeArchived,
 } from '@/lib/orders/order-visibility'
@@ -320,10 +320,12 @@ export function createListHandler(config: EntityConfig) {
 
       // 状态筛选通过快速筛选处理，这里只处理特殊的归档逻辑
       if (!parseIncludeArchived(searchParams) && enhancedConfig.prisma?.model === 'orders') {
-        // 订单主表：默认仅排除完成留档（已取消仍显示在订单管理中）
+        // 订单主表：默认排除完成留档、已取消（与关联表 includeArchived 语义一致；勾选历史后可见）
         const statusFilterValue = searchParams.get('filter_status')
         if (!statusFilterValue || statusFilterValue === '__all__') {
-          where.status = { not: ORDER_STATUS_ARCHIVED }
+          where.status = {
+            notIn: [...ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS],
+          }
         }
       }
 

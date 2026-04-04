@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { generateOrderExportExcel, OrderExportData } from '@/lib/utils/order-export-excel'
-import { ORDER_STATUS_ARCHIVED, parseIncludeArchived } from '@/lib/orders/order-visibility'
+import {
+  ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS,
+  parseIncludeArchived,
+} from '@/lib/orders/order-visibility'
 
 /**
  * GET /api/oms/orders/export
@@ -48,8 +51,10 @@ export async function GET(request: NextRequest) {
       if (status && status !== '__all__') {
         where.status = status
       } else if (!parseIncludeArchived(searchParams)) {
-        // 与订单列表一致：默认仅排除完成留档
-        where.status = { not: ORDER_STATUS_ARCHIVED }
+        // 与订单列表一致：默认排除完成留档、已取消
+        where.status = {
+          notIn: [...ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS],
+        }
       }
 
       // 操作方式筛选
