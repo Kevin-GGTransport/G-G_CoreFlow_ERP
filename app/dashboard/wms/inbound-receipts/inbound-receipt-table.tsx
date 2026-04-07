@@ -6,7 +6,7 @@ import { EntityTable } from "@/components/crud/entity-table"
 import { inboundReceiptConfig } from "@/lib/crud/configs/inbound-receipts"
 import type { ClickableColumnConfig } from "@/lib/table/config"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, Printer, FileText, Copy } from "lucide-react"
+import { Printer, FileText, Copy, Download } from "lucide-react"
 import { toast } from "sonner"
 import {
   DropdownMenu,
@@ -90,7 +90,6 @@ const INBOUND_ID_FIELD = 'inbound_receipt_id'
 
 export function InboundReceiptTable() {
   const router = useRouter()
-  const [isSyncing, setIsSyncing] = React.useState(false)
   const [refreshKey, setRefreshKey] = React.useState(0)
   const [includeArchived, setIncludeArchived] = React.useState(false)
   const extraListParams = React.useMemo(
@@ -98,6 +97,24 @@ export function InboundReceiptTable() {
     [includeArchived]
   )
   const [selectedInboundRows, setSelectedInboundRows] = React.useState<any[]>([])
+  /** 与当前列表请求一致，用于导出筛选结果 */
+  const [listSearchParams, setListSearchParams] = React.useState<URLSearchParams>(
+    () => new URLSearchParams()
+  )
+
+  const handleExportFiltered = React.useCallback(() => {
+    const p = new URLSearchParams(listSearchParams.toString())
+    p.delete("page")
+    p.delete("limit")
+    p.delete("sort")
+    p.delete("order")
+    const qs = p.toString()
+    const url = qs
+      ? `/api/wms/inbound-receipts/export?${qs}`
+      : "/api/wms/inbound-receipts/export"
+    window.open(url, "_blank", "noopener,noreferrer")
+    toast.success("正在下载（与当前筛选一致，按拆柜日期升序，未填拆柜日期的行在最后）")
+  }, [listSearchParams])
 
   // 生成单据：合并为一份 PDF，只开一个标签页
   const openBatchUnloadSheet = React.useCallback(() => {
@@ -362,103 +379,7 @@ export function InboundReceiptTable() {
     received_by: loadReceivedByOptions,
   }), [loadUnloadedByOptions, loadReceivedByOptions])
 
-  const [isFixingDates, setIsFixingDates] = React.useState(false)
-
-  // 同步缺失的入库管理记录
-  const handleSyncMissingRecords = React.useCallback(async () => {
-    setIsSyncing(true)
-    try {
-      const response = await fetch('/api/admin/sync-inbound-receipts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || '同步失败')
-      }
-
-      const result = await response.json()
-      
-      if (result.success) {
-        const created = result.data?.created || 0
-        if (created > 0) {
-          toast.success(`成功同步 ${created} 条记录`)
-          // 刷新表格
-          setRefreshKey(prev => prev + 1)
-        } else {
-          toast.info('没有需要同步的记录')
-        }
-      } else {
-        toast.error(result.message || '同步失败')
-      }
-    } catch (error: any) {
-      console.error('同步失败:', error)
-      toast.error(error.message || '同步失败，请重试')
-    } finally {
-      setIsSyncing(false)
-    }
-  }, [])
-
-  // 批量修复拆柜日期（只修复空值，不覆盖已有值）
-  const handleFixPlannedUnloadDates = React.useCallback(async () => {
-    // 确认对话框
-    const confirmed = window.confirm(
-      '批量修复拆柜日期\n\n' +
-      '此操作将：\n' +
-      '• 只修复拆柜日期为空的记录\n' +
-      '• 不会覆盖已有拆柜日期的记录\n' +
-      '• 根据订单的提柜日期和到港日期自动计算\n\n' +
-      '确定要继续吗？'
-    )
-    
-    if (!confirmed) {
-      return
-    }
-
-    setIsFixingDates(true)
-    try {
-      const response = await fetch('/api/wms/inbound-receipts/fix-planned-unload-dates', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || '修复失败')
-      }
-
-      const result = await response.json()
-      
-      if (result.success) {
-        const fixed = result.fixed || 0
-        const failed = result.failed || 0
-        if (fixed > 0) {
-          toast.success(`成功修复 ${fixed} 条空记录的拆柜日期${failed > 0 ? `，${failed} 条无法修复` : ''}`)
-          // 刷新表格
-          setRefreshKey(prev => prev + 1)
-        } else {
-          toast.info(result.message || '没有需要修复的记录（所有记录都有拆柜日期）')
-        }
-        if (result.errors && result.errors.length > 0) {
-          console.warn('修复失败的记录:', result.errors)
-        }
-      } else {
-        toast.error(result.message || '修复失败')
-      }
-    } catch (error: any) {
-      console.error('修复失败:', error)
-      toast.error(error.message || '修复失败，请重试')
-    } finally {
-      setIsFixingDates(false)
-    }
-  }, [])
-
-  // 自定义工具栏按钮
+  // 自定义工具栏按钮（同步缺失记录、修复拆柜日期已暂时隐藏）
   const customToolbarButtons = React.useMemo(
     () => (
       <div className="flex flex-wrap items-center gap-3">
@@ -467,31 +388,20 @@ export function InboundReceiptTable() {
           onCheckedChange={setIncludeArchived}
           id="inbound-receipts-include-archived"
         />
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSyncMissingRecords}
-            disabled={isSyncing || isFixingDates}
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            {isSyncing ? '同步中...' : '同步缺失记录'}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleFixPlannedUnloadDates}
-            disabled={isSyncing || isFixingDates}
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${isFixingDates ? 'animate-spin' : ''}`} />
-            {isFixingDates ? '修复中...' : '修复拆柜日期'}
-          </Button>
-        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={handleExportFiltered}
+          title="导出当前筛选结果，Excel 内按拆柜日期从早到晚排序"
+        >
+          <Download className="h-4 w-4" />
+          导出筛选结果
+        </Button>
       </div>
     ),
-    [handleSyncMissingRecords, handleFixPlannedUnloadDates, isSyncing, isFixingDates, includeArchived]
+    [includeArchived, handleExportFiltered]
   )
 
   // 快速筛选区：周一～周日（拆柜日期）+ 显示当天/明天/本周/本月/已放柜子
@@ -564,6 +474,7 @@ export function InboundReceiptTable() {
       customToolbarButtons={customToolbarButtons}
       customFilterContent={customFilterContent}
       extraListParams={extraListParams}
+      onSearchParamsChange={setListSearchParams}
       onRowSelectionChange={setSelectedInboundRows}
       customBatchActions={customBatchActions}
     />

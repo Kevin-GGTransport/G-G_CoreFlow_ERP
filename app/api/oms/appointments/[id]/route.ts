@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { checkAuth, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
+import {
+  checkAuth,
+  checkPermission,
+  handleValidationError,
+  handleError,
+  serializeBigInt,
+  addSystemFields,
+} from '@/lib/api/helpers';
+import { deliveryAppointmentConfig } from '@/lib/crud/configs/delivery-appointments';
 import { deliveryAppointmentUpdateSchema } from '@/lib/validations/delivery-appointment';
 import prisma from '@/lib/prisma';
 
@@ -640,10 +648,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 检查登录
-    const authResult = await checkAuth();
-    if (authResult.error) return authResult.error;
-    
+    const permissionResult = await checkPermission(
+      deliveryAppointmentConfig.permissions.delete
+    );
+    if (permissionResult.error) return permissionResult.error;
+
     const resolvedParams = await Promise.resolve(params);
     const id = resolvedParams.id;
     const appointmentId = BigInt(id);

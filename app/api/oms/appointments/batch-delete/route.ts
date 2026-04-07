@@ -6,12 +6,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { checkPermission } from '@/lib/api/helpers'
+import { deliveryAppointmentConfig } from '@/lib/crud/configs/delivery-appointments'
 import { AppointmentDeleteService } from '@/lib/services/appointment-delete.service'
 
 export async function POST(request: NextRequest) {
   try {
-    // 检查权限
-    const permissionResult = await checkPermission(['oms'])
+    const permissionResult = await checkPermission(
+      deliveryAppointmentConfig.permissions.delete
+    )
     if (permissionResult.error) return permissionResult.error
 
     const body = await request.json()
