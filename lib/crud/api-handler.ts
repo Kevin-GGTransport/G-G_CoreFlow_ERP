@@ -28,6 +28,7 @@ import {
   ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS,
   ORDER_STATUS_CANCELLED,
   parseIncludeArchived,
+  ordersWhereRootExcludeCancelledOnly,
 } from '@/lib/orders/order-visibility'
 import { purgeOperationalDataForCancelledOrder } from '@/lib/orders/cancelled-order-cleanup'
 
@@ -100,7 +101,19 @@ export function createListHandler(config: EntityConfig) {
             }
           })
           .filter((condition): condition is any => condition !== null)
-        
+
+        // 发票：同时按关联订单柜号 order_number 模糊搜（与发票号 OR）
+        if (
+          enhancedConfig.prisma?.model === 'invoices' &&
+          search.trim()
+        ) {
+          searchConditions.push({
+            orders: {
+              order_number: { contains: search, mode: 'insensitive' as const },
+            },
+          })
+        }
+
         // 只有当有有效的搜索条件时才设置 where.OR
         if (searchConditions.length > 0) {
           where.OR = searchConditions
@@ -326,6 +339,19 @@ export function createListHandler(config: EntityConfig) {
           where.status = {
             notIn: [...ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS],
           }
+        }
+      }
+
+      // 直送账单等：默认不列出关联订单已取消的发票（与业务「取消不出账」一致）
+      if (
+        enhancedConfig.prisma?.model === 'invoices' &&
+        enhancedConfig.list.excludeCancelledOrders
+      ) {
+        const fragment = ordersWhereRootExcludeCancelledOnly()
+        if (where.orders) {
+          where.orders = { AND: [fragment, where.orders] }
+        } else {
+          where.orders = fragment
         }
       }
 
@@ -1298,9 +1324,14 @@ export function createUpdateHandler(config: EntityConfig) {
         }
         
         if (fieldConfig?.relation) {
-          if (value !== undefined && value !== null && value !== '') {
-            // 优先使用 relationField，否则如果字段名以 _id 结尾使用字段名，最后才使用 valueField
-            const targetField = fieldConfig.relationField || (key.endsWith('_id') ? key : fieldConfig.relation.valueField) || key
+          const targetField =
+            fieldConfig.relationField ||
+            (key.endsWith('_id') ? key : fieldConfig.relation.valueField) ||
+            key
+          // 显式清空可选外键（如费用 customer_id）
+          if (value === null || value === '') {
+            processedData[targetField] = null
+          } else if (value !== undefined) {
             const idStr = typeof value === 'bigint' ? value.toString() : String(value).trim()
             if (/^\d+$/.test(idStr)) {
               processedData[targetField] = BigInt(idStr)

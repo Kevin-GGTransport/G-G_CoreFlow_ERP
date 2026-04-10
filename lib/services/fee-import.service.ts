@@ -24,25 +24,36 @@ const feeImportConfig: ImportConfig<FeeImportRow> = {
   requiredRoles: ['admin', 'oms_manager'],
 
   executeImport: async (data: FeeImportRow[], userId: bigint): Promise<void> => {
-    await prisma.$transaction(async (tx) => {
-      for (const row of data) {
-        await tx.fee.create({
-          data: {
-            fee_code: row.fee_code,
-            fee_name: row.fee_name,
-            unit: row.unit ?? null,
-            unit_price: row.unit_price,
-            currency: row.currency ?? 'USD',
-            scope_type: row.scope_type,
-            container_type: row.container_type ?? null,
-            description: row.description ?? null,
-            is_active: true,
-            created_by: userId,
-            updated_by: userId,
-          },
-        })
-      }
+    if (data.length === 0) return
+
+    const mapRow = (row: FeeImportRow) => ({
+      fee_code: row.fee_code,
+      fee_name: row.fee_name,
+      unit: row.unit ?? null,
+      unit_price: row.unit_price,
+      currency: row.currency ?? 'USD',
+      scope_type: row.scope_type,
+      container_type: row.container_type ?? null,
+      description: row.description ?? null,
+      created_by: userId,
+      updated_by: userId,
     })
+
+    // 避免 interactive $transaction(async tx => …)：在 Neon/PgBouncer 等池化连接上易出现
+    // “Transaction not found / Transaction ID is invalid”。
+    // 使用 createMany + 数组式 $transaction，由 Prisma 在同一连接上顺序执行，兼容池化。
+    const BATCH = 250
+    const operations = []
+    for (let i = 0; i < data.length; i += BATCH) {
+      const slice = data.slice(i, i + BATCH).map(mapRow)
+      operations.push(prisma.fee.createMany({ data: slice }))
+    }
+
+    if (operations.length === 1) {
+      await operations[0]
+    } else {
+      await prisma.$transaction(operations)
+    }
   },
 }
 

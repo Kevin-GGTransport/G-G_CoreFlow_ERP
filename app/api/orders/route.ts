@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createListHandler, createCreateHandler } from '@/lib/crud/api-handler'
 import { orderConfig } from '@/lib/crud/configs/orders'
 import { inboundSyncService } from '@/lib/services/inbound-sync.service'
+import { scheduleDirectDeliveryInvoiceSync } from '@/lib/finance/direct-delivery-sync'
 import { auth } from '@/auth'
 
 // GET - 获取订单列表
@@ -27,6 +28,12 @@ export async function POST(request: NextRequest) {
         inboundSyncService.syncInboundReceiptForOrder(BigInt(orderId), userId).catch(error => {
           console.error('[Orders POST] 自动创建入库管理记录失败:', error)
         })
+      }
+
+      if (orderId && operationMode === 'direct_delivery') {
+        const session = await auth()
+        const userId = session?.user?.id ? BigInt(session.user.id) : undefined
+        scheduleDirectDeliveryInvoiceSync(BigInt(orderId), userId)
       }
       
       // 返回原始响应

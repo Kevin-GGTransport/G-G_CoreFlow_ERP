@@ -7,9 +7,12 @@ export const feeCreateSchema = z.object({
   unit_price: z.number().min(0, '单价不能为负'),
   currency: z.string().max(10).optional().default('USD'),
   scope_type: z.enum(['all', 'customers']),
+  // 可显式传 null 以清空客户绑定（更新时）
+  customer_id: z
+    .union([z.coerce.number().int().positive(), z.null()])
+    .optional(),
   container_type: z.string().max(50).optional().nullable(),
   description: z.string().optional(),
-  is_active: z.boolean().optional().default(true),
 })
 
 export const feeUpdateSchema = feeCreateSchema.partial()

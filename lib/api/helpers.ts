@@ -8,6 +8,7 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { ZodError } from 'zod';
 import { isWmsFullAccessUsername } from '@/lib/auth/wms-full-access-users';
+import { DEFAULT_LIST_PAGE_SIZE } from '@/lib/crud/default-list-pagination';
 
 export type CheckPermissionOptions = {
   /** 为 true 时：登录名在白名单（见 wms-full-access-users）且账号活跃则放行，用于 /api/wms/* */
@@ -140,7 +141,7 @@ export function parsePaginationParams(searchParams: URLSearchParams, defaultSort
     // 无限制时使用一个非常大的数字（但不超过数据库限制）
     limit = 50000;
   } else {
-    limit = Math.min(maxLimit, Math.max(1, parseInt(searchParams.get('limit') || '10', 10)));
+    limit = Math.min(maxLimit, Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_LIST_PAGE_SIZE), 10)));
   }
   const sort = searchParams.get('sort') || defaultSort;
   const order = searchParams.get('order') === 'asc' ? 'asc' : (searchParams.get('order') === 'desc' ? 'desc' : defaultOrder);
@@ -329,9 +330,24 @@ export async function addSystemFields(data: any, user: any, isCreate: boolean = 
 }
 
 /**
- * 将 BigInt 和 Decimal 转换为字符串（用于 JSON 响应）
+ * 数据库 DATE 仅表示日历日：按运行环境本地日期格式化为 YYYY-MM-DD，
+ * 避免 toISOString() 的 UTC 换算导致与库中日期差一天。
  */
-export function serializeBigInt(obj: any): any {
+function formatLocalDateYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Prisma @db.Date 等「纯日历」字段：序列化时用本地日历，不做 UTC 偏移 */
+const DATE_ONLY_LOCAL_KEYS = new Set<string>(['invoice_date']);
+
+/**
+ * 将 BigInt 和 Decimal 转换为字符串（用于 JSON 响应）
+ * @param fieldKey 递归时传入对象属性名，用于 invoice_date 等纯日期字段的正确序列化
+ */
+export function serializeBigInt(obj: any, fieldKey?: string): any {
   if (obj === null || obj === undefined) {
     return obj;
   }
@@ -342,14 +358,15 @@ export function serializeBigInt(obj: any): any {
     if (isNaN(obj.getTime())) {
       return null;
     }
-    // 对于 DATE 类型（只有日期，没有时间），返回 YYYY-MM-DD 格式
-    // 对于 TIMESTAMPTZ 类型（有日期和时间），返回 ISO 字符串
-    // 如果时间是 00:00:00.000Z，说明是 DATE 类型，只返回日期部分
+    if (fieldKey && DATE_ONLY_LOCAL_KEYS.has(fieldKey)) {
+      return formatLocalDateYMD(obj);
+    }
+    // 对于 TIMESTAMPTZ 等：午夜 UTC 的 DATE 仍用 UTC 日界线拆成 YYYY-MM-DD（兼容旧行为）
     const iso = obj.toISOString();
     if (iso.endsWith('T00:00:00.000Z')) {
-      return iso.split('T')[0]; // 返回 YYYY-MM-DD
+      return iso.split('T')[0];
     }
-    return iso; // 返回完整的 ISO 字符串
+    return iso;
   }
 
   if (typeof obj === 'bigint') {
@@ -368,13 +385,13 @@ export function serializeBigInt(obj: any): any {
   }
 
   if (Array.isArray(obj)) {
-    return obj.map(serializeBigInt);
+    return obj.map((item) => serializeBigInt(item));
   }
 
   if (typeof obj === 'object') {
     const result: any = {};
     for (const [key, value] of Object.entries(obj)) {
-      result[key] = serializeBigInt(value);
+      result[key] = serializeBigInt(value, key);
     }
     return result;
   }

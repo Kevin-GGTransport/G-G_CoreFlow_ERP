@@ -16,7 +16,7 @@ import {
  * 
  * 查询参数：
  * - page: 页码（默认1）
- * - limit: 每页数量（默认20，最大100）
+ * - limit: 每页数量（默认100，最大100）
  * - sort: 排序字段（默认 id；storage_location_code 在服务端内存排序，单次最多拉取 10000 条）
  * - order: 排序方向（asc/desc，默认desc）
  * - search: 搜索关键词（仅搜索柜号/订单号）
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '100', 10)))
     const sort = searchParams.get('sort') || 'id'
     const order = searchParams.get('order') === 'asc' ? 'asc' : 'desc'
     const search = searchParams.get('search') || ''

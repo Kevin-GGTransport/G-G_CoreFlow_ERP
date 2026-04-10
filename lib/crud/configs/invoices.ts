@@ -54,7 +54,7 @@ export const invoiceConfig: EntityConfig = {
     },
     order_id: {
       key: 'order_id',
-      label: '订单',
+      label: '柜号',
       type: 'relation',
       relation: {
         model: 'orders',
@@ -121,7 +121,7 @@ export const invoiceConfig: EntityConfig = {
     defaultOrder: 'desc',
     columns: ['invoice_number', 'invoice_type', 'customer_id', 'order_id', 'invoice_date', 'status', 'total_amount', 'tax_amount', 'currency', 'notes'],
     searchFields: ['invoice_number'],
-    pageSize: 10,
+    pageSize: 100,
     filterFields: [
       {
         field: 'invoice_type',
@@ -181,9 +181,31 @@ export const directDeliveryBillConfig: EntityConfig = {
   list: {
     ...invoiceConfig.list,
     columns: ['invoice_number', 'customer_id', 'order_id', 'invoice_date', 'status', 'total_amount', 'currency', 'notes'],
+    /** 模糊搜索：发票号 + 关联订单柜号（order_number），由 /api/finance/invoices 列表接口处理 */
+    searchPlaceholder: '搜索发票号、柜号...',
+    /** 快速筛选不展示账单类型、柜号（列表已限定直送且柜号可用搜索框） */
+    filterFieldKeysExclude: ['invoice_type', 'order_id'],
+    /** 列表与合计：不展示关联订单已取消的直送账单（与删单/补数规则一致） */
+    excludeCancelledOrders: true,
   },
   permissions: {
     ...invoiceConfig.permissions,
-    create: [], // 新建通过单独页面 /bills/direct-delivery/new
+    create: [], // 新建通过列表「新建直送账单」弹窗（按柜号）或 API create-from-container
+  },
+}
+
+/** 拆柜账单（发票 unload）：与直送账单同流程，独立列表与详情路由 */
+export const containerUnloadBillConfig: EntityConfig = {
+  ...invoiceConfig,
+  displayName: '拆柜账单',
+  pluralName: '拆柜账单',
+  detailPath: '/dashboard/finance/bills/container-unload',
+  list: {
+    ...invoiceConfig.list,
+    columns: ['invoice_number', 'customer_id', 'order_id', 'invoice_date', 'status', 'total_amount', 'currency', 'notes'],
+  },
+  permissions: {
+    ...invoiceConfig.permissions,
+    create: [], // 新建通过 /bills/container-unload/new
   },
 }

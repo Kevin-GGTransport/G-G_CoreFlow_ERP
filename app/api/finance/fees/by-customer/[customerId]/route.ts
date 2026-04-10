@@ -29,13 +29,15 @@ export async function GET(
       100
     )
 
+    const cid = BigInt(customerId)
     const where = {
       OR: [
         { scope_type: 'all' },
+        { customer_id: cid },
         {
           scope_type: 'customers',
           fee_scope: {
-            some: { customer_id: BigInt(customerId) },
+            some: { customer_id: cid },
           },
         },
       ],
@@ -47,6 +49,9 @@ export async function GET(
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { [sort]: order },
+        include: {
+          customers: { select: { id: true, code: true, name: true } },
+        },
       }),
       prisma.fee.count({ where }),
     ])

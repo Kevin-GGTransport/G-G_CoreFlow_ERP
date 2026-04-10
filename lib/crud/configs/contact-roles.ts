@@ -52,7 +52,7 @@ export const contactRoleConfig: EntityConfig = {
     defaultOrder: 'desc',
     columns: ['name', 'phone', 'email', 'role'],
     searchFields: ['name'],
-    pageSize: 50,
+    pageSize: 100,
   },
   
   formFields: ['name', 'phone', 'email', 'role'],

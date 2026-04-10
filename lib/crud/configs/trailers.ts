@@ -95,7 +95,7 @@ export const trailerConfig: EntityConfig = {
     defaultOrder: 'asc',
     columns: ['trailer_code', 'trailer_type', 'department', 'status', 'created_at'],
     searchFields: ['trailer_code', 'trailer_type'],
-    pageSize: 10,
+    pageSize: 100,
     // 筛选配置（快速筛选）
     filterFields: [
       {

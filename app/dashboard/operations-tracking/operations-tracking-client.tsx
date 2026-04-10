@@ -57,7 +57,7 @@ export function OperationsTrackingClient({ operationMode, title }: OperationsTra
   const [data, setData] = React.useState<OperationsTrackingItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(50)
+  const [pageSize, setPageSize] = React.useState(100)
   const [total, setTotal] = React.useState(0)
   const [search, setSearch] = React.useState("")
   const [searchInput, setSearchInput] = React.useState("")

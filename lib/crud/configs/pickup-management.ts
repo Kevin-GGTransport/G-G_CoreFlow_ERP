@@ -241,7 +241,7 @@ export const pickupManagementConfig: EntityConfig = {
       'notes',
     ],
     searchFields: ['container_number'], // 只搜索柜号（最重要的字段）
-    pageSize: 20,
+    pageSize: 100,
     inlineEdit: {
       enabled: true,
       fields: [

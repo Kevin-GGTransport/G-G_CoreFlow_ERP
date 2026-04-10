@@ -4,6 +4,7 @@ import * as React from "react"
 import { EntityTable } from "@/components/crud/entity-table"
 import { feeConfig } from "@/lib/crud/configs/fees"
 import { FeeImportDialog } from "./fee-import-dialog"
+import { CloneDefaultFeesButton } from "./clone-default-fees-button"
 
 export function FeesPageClient() {
   const [importDialogOpen, setImportDialogOpen] = React.useState(false)
@@ -21,6 +22,9 @@ export function FeesPageClient() {
           enabled: true,
           onImport: () => setImportDialogOpen(true),
         }}
+        customToolbarButtons={
+          <CloneDefaultFeesButton onSuccess={() => setRefreshTrigger((k) => k + 1)} />
+        }
         refreshKey={refreshTrigger}
       />
       <FeeImportDialog

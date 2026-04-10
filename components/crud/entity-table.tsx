@@ -31,6 +31,7 @@ import { SearchModule } from "./search-module"
 import { InlineEditCell } from "./inline-edit-cell"
 import { LocationSelect } from "@/components/ui/location-select"
 import { enhanceConfigWithSearchFields } from "@/lib/crud/search-config-generator"
+import { DEFAULT_LIST_PAGE_SIZE } from "@/lib/crud/default-list-pagination"
 import { FuzzySearchSelect, FuzzySearchOption } from "@/components/ui/fuzzy-search-select"
 import {
   Select,
@@ -182,6 +183,12 @@ function RelationInlineDraftRowDisplay({
       return normalizeRelationDraftId(rowOriginal.carrier.carrier_id)
     }
     if (fieldKey === 'customer' && rowOriginal.customer?.id != null) {
+      return normalizeRelationDraftId(rowOriginal.customer.id)
+    }
+    if (fieldKey === 'customer_id' && rowOriginal.customers?.id != null) {
+      return normalizeRelationDraftId(rowOriginal.customers.id)
+    }
+    if (fieldKey === 'customer_id' && rowOriginal.customer?.id != null) {
       return normalizeRelationDraftId(rowOriginal.customer.id)
     }
     return null
@@ -437,7 +444,7 @@ export function EntityTable<T = any>({
   const [itemToDelete, setItemToDelete] = React.useState<T | null>(null)
   const [editingItem, setEditingItem] = React.useState<T | null>(null)
   
-  const defaultPageSize = config.list.pageSize || 10
+  const defaultPageSize = config.list.pageSize ?? DEFAULT_LIST_PAGE_SIZE
   const [page, setPage] = React.useState(() => {
     if (typeof window === 'undefined') return 1
     const p = new URLSearchParams(window.location.search).get('page')
@@ -585,7 +592,7 @@ export function EntityTable<T = any>({
     
     // 分页（始终写入 URL，便于刷新后保持当前页）
     params.set('page', String(page))
-    if (pageSize !== (config.list.pageSize || 10)) {
+    if (pageSize !== (config.list.pageSize ?? DEFAULT_LIST_PAGE_SIZE)) {
       params.set('limit', String(pageSize))
     }
     
@@ -1826,13 +1833,27 @@ export function EntityTable<T = any>({
         },
         body: JSON.stringify({ ids }),
       })
-      
+
+      const resultData = await response.json().catch(() => ({}))
+
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `批量删除${config.displayName}失败`)
+        throw new Error(resultData.error || `批量删除${config.displayName}失败`)
       }
-      
-      toast.success(`成功删除 ${ids.length} 条${config.displayName}记录`)
+
+      const deletedCount =
+        typeof resultData.deleted === 'number' ? resultData.deleted : ids.length
+      const failList = Array.isArray(resultData.failed) ? resultData.failed : []
+
+      if (failList.length > 0) {
+        toast.warning(
+          resultData.message ||
+            `已删除 ${deletedCount} 条，${failList.length} 条未删除（请查看提示或是否被其他数据引用）`
+        )
+      } else {
+        toast.success(
+          resultData.message || `成功删除 ${deletedCount} 条${config.displayName}记录`
+        )
+      }
       setBatchDeleteDialogOpen(false)
       setSelectedRows([])
       fetchData(page, pageSize, sort, order, search, filterValues, advancedSearchValues, advancedSearchLogic)
@@ -2667,7 +2688,10 @@ export function EntityTable<T = any>({
               fieldConfig.relation?.model === 'trailers' ? 'trailers' : null,
               fieldConfig.relation?.model === 'drivers' ? 'drivers' : null,
               fieldConfig.relation?.model === 'carriers' ? 'carrier' : null,
+              // fee.customer_id 等：Prisma 关联字段名为 customers，不是 customer
+              fieldConfig.relation?.model === 'customers' ? 'customers' : null,
               fieldConfig.relation?.model === 'customers' ? 'customer' : null,
+              fieldConfig.relation?.model === 'orders' ? 'orders' : null,
             ].filter((key): key is string => key !== null && typeof key === 'string')
 
             for (const key of possibleKeys) {
@@ -2688,7 +2712,10 @@ export function EntityTable<T = any>({
               } else if (fieldConfig.relation.model === 'carriers') {
                 modelKey = 'carrier'
               } else if (fieldConfig.relation.model === 'customers') {
-                modelKey = 'customer'
+                const ro = row.original as any
+                modelKey = ro?.customers != null ? 'customers' : ro?.customer != null ? 'customer' : null
+              } else if (fieldConfig.relation.model === 'orders') {
+                modelKey = 'orders'
               }
               if (modelKey && (row.original as any)[modelKey]) {
                 relationData = (row.original as any)[modelKey]
@@ -2699,6 +2726,9 @@ export function EntityTable<T = any>({
               const displayField = fieldConfig.relation?.displayField || 'full_name'
               const displayValue =
                 relationData[displayField] ||
+                relationData.order_number ||
+                relationData.name ||
+                relationData.code ||
                 relationData.full_name ||
                 relationData.username ||
                 relationData.trailer_code ||
@@ -2980,10 +3010,12 @@ export function EntityTable<T = any>({
 
   const { columns, sortableColumns, columnLabels } = tableConfig
 
-  // 获取搜索占位符（使用第一个可搜索字段）
-  const searchPlaceholder = config.list.searchFields && config.list.searchFields.length > 0
-    ? `搜索${config.list.searchFields.map(field => config.fields[field]?.label || field).join('、')}...`
-    : '搜索...'
+  // 获取搜索占位符（可配置；否则根据 searchFields 自动生成）
+  const searchPlaceholder =
+    config.list.searchPlaceholder ??
+    (config.list.searchFields && config.list.searchFields.length > 0
+      ? `搜索${config.list.searchFields.map((field) => config.fields[field]?.label || field).join('、')}...`
+      : '搜索...')
 
   return (
     <div className="space-y-3 px-3">

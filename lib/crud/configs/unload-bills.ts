@@ -69,7 +69,7 @@ export const unloadBillConfig: EntityConfig = {
   list: {
     defaultSort: 'planned_unload_at',
     defaultOrder: 'desc',
-    pageSize: 20,
+    pageSize: 100,
     columns: ['container_number', 'total_box_count', 'planned_unload_at', 'amount', 'unloaded_by_name'],
     searchFields: ['container_number', 'unloaded_by_name'],
     filterFields: [

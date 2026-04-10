@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
+import { scheduleDirectDeliveryInvoiceSync } from '@/lib/finance/direct-delivery-sync'
 
 // PUT - 更新仓点明细
 export async function PUT(
@@ -178,6 +179,11 @@ export async function PUT(
       where: { id: BigInt(resolvedParams.id) },
     })
 
+    const uidPut = session.user?.id ? BigInt(session.user.id) : undefined
+    if (currentDetail.order_id) {
+      scheduleDirectDeliveryInvoiceSync(currentDetail.order_id, uidPut)
+    }
+
     return NextResponse.json({
       data: serializeBigInt(finalOrderDetail || orderDetail)
     })
@@ -280,6 +286,9 @@ export async function DELETE(
         data: { container_volume: 0 },
       })
     }
+
+    const uidDel = session.user?.id ? BigInt(session.user.id) : undefined
+    scheduleDirectDeliveryInvoiceSync(detailToDelete.order_id, uidDel)
 
     return NextResponse.json({ message: '仓点明细删除成功' })
   } catch (error: any) {

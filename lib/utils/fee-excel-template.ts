@@ -85,7 +85,7 @@ export async function generateFeeImportTemplate(): Promise<ExcelJS.Workbook> {
     ['单价', '是', '数字，不能为负', '100'],
     ['币种', '否', '默认 USD', 'USD'],
     ['归属范围', '是', 'all=所有客户，customers=指定客户', 'all 或 customers'],
-    ['柜型', '否', '选填，如 20GP/40HQ，空表示不限柜型', '20GP'],
+    ['柜型', '否', '选填，如 20GP/40DH，空表示不限柜型', '20GP'],
     ['说明', '否', '选填', '默认仓储费'],
   ]
   instructions.forEach((row, idx) => {

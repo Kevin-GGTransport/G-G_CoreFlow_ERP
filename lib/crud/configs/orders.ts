@@ -268,7 +268,7 @@ export const orderConfig: EntityConfig = {
     defaultOrder: 'desc',
     columns: ['order_number', 'customer', 'user_id', 'order_date', 'created_at', 'status', 'operation_mode', 'delivery_location', 'total_amount', 'discount_amount', 'tax_amount', 'final_amount', 'container_type', 'container_volume', 'eta_date', 'lfd_date', 'pickup_date', 'ready_date', 'return_deadline', 'mbl_number', 'do_issued', 'notes'],
     searchFields: ['order_number'], // 只搜索订单号（最重要的字段）
-    pageSize: 10,
+    pageSize: 100,
     // 筛选配置（快速筛选）- 已自动生成，包含所有 select/relation/date/datetime 字段
     // filterFields 已由 search-config-generator 自动生成
     // 高级搜索配置（多条件组合）- 已自动生成，包含所有 columns 中显示的字段（包括原始字段、读取字段、计算字段）

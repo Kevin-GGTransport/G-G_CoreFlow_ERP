@@ -299,7 +299,14 @@ export function enhanceConfigWithSearchFields(config: EntityConfig): EntityConfi
   // 始终自动生成 advancedSearchFields，确保所有模块都包含所有显示字段
   // 这样可以保持一致性，避免手动配置时遗漏字段，也方便后续添加新页面
   enhancedConfig.list.advancedSearchFields = generateAdvancedSearchFields(enhancedConfig)
-  
+
+  if (enhancedConfig.list.filterFieldKeysExclude?.length) {
+    const ex = new Set(enhancedConfig.list.filterFieldKeysExclude)
+    enhancedConfig.list.filterFields = (enhancedConfig.list.filterFields ?? []).filter(
+      (f) => !ex.has(f.field)
+    )
+  }
+
   return enhancedConfig
 }
 

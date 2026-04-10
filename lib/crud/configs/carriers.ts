@@ -68,7 +68,7 @@ export const carrierConfig: EntityConfig = {
     defaultOrder: 'asc',
     columns: ['carrier_code', 'name', 'carrier_type', 'contact', 'created_at'],
     searchFields: ['name'], // 只搜索承运商名称（最重要的字段）
-    pageSize: 10,
+    pageSize: 100,
     // 筛选配置（快速筛选）- 已自动生成，包含所有 select/relation/date/datetime 字段
     // filterFields 已由 search-config-generator 自动生成
     // 高级搜索配置（多条件组合）- 已自动生成，包含所有 columns 中显示的字段（包括原始字段、读取字段、计算字段）

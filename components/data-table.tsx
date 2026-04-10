@@ -42,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import { DEFAULT_LIST_PAGE_SIZE } from "@/lib/crud/default-list-pagination"
 import { TABLE_COLUMN_RESIZE_MAX_PX } from "@/lib/table/column-sizing"
 
 const DEFAULT_COLUMN_SIZE_PX = 112
@@ -62,6 +63,39 @@ function textForContextMenuCopy(columnId: string | undefined, plainText: string)
   const t = plainText.trim()
   if (!t) return ""
   return t.length <= 4 ? t : t.slice(-4)
+}
+
+/**
+ * 关系型外键列：右键复制时用关联对象的展示字段（如订单柜号 order_number），而不是原始 ID。
+ */
+function relationClipboardDisplayText(
+  columnId: string | undefined,
+  rowOriginal: unknown
+): string | undefined {
+  if (!columnId || rowOriginal == null || typeof rowOriginal !== 'object') {
+    return undefined
+  }
+  const r = rowOriginal as Record<string, unknown>
+  if (columnId === 'order_id') {
+    const orders = r.orders as { order_number?: string | null } | null | undefined
+    const num = orders?.order_number
+    if (num != null && String(num).trim() !== '') {
+      return String(num).trim()
+    }
+    return undefined
+  }
+  if (columnId === 'customer_id') {
+    const c = r.customers as { code?: string | null; name?: string | null } | null | undefined
+    if (c) {
+      const label = [c.code, c.name]
+        .filter((x) => x != null && String(x).trim() !== '')
+        .join(' ')
+        .trim()
+      if (label) return label
+    }
+    return undefined
+  }
+  return undefined
 }
 
 interface DataTableProps<TData, TValue> {
@@ -336,7 +370,7 @@ export function DataTable<TData, TValue>({
   /** 当前页内行下标，用于 Shift+点击复选框做区间选择（与 Excel 类似） */
   const shiftSelectAnchorIndexRef = React.useRef<number | null>(null)
   const [pageIndex, setPageIndex] = React.useState(0)
-  const [pageSize, setPageSize] = React.useState(10)
+  const [pageSize, setPageSize] = React.useState(DEFAULT_LIST_PAGE_SIZE)
   const [pageInputValue, setPageInputValue] = React.useState<string>("")
 
   // 同步外部控制的行选择状态
@@ -1312,7 +1346,15 @@ export function DataTable<TData, TValue>({
                           if (isActionsCell || isSelectCell) {
                             return ''
                           }
-                          
+
+                          const relationText = relationClipboardDisplayText(
+                            cell.column.id,
+                            row.original
+                          )
+                          if (relationText !== undefined) {
+                            return relationText
+                          }
+
                           // 尝试从 cell 的原始值获取文本
                           const cellValue = cell.getValue()
                           if (cellValue !== null && cellValue !== undefined) {

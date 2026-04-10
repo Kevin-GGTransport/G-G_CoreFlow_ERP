@@ -67,21 +67,27 @@ export const feeConfig: EntityConfig = {
         { label: '指定客户', value: 'customers' },
       ],
     },
+    customer_id: {
+      key: 'customer_id',
+      label: '客户名称',
+      type: 'relation',
+      relation: {
+        model: 'customers',
+        displayField: 'name',
+        valueField: 'id',
+      },
+    },
     container_type: {
       key: 'container_type',
       label: '柜型',
       type: 'text',
-      placeholder: '如 20GP/40HQ，空表示不限',
+      sortable: true,
+      placeholder: '如 20GP/40DH，空表示不限',
     },
     description: {
       key: 'description',
       label: '说明',
       type: 'textarea',
-    },
-    is_active: {
-      key: 'is_active',
-      label: '启用',
-      type: 'boolean',
     },
     created_at: {
       key: 'created_at',
@@ -100,11 +106,21 @@ export const feeConfig: EntityConfig = {
   },
 
   list: {
-    defaultSort: 'fee_code',
+    defaultSort: 'container_type',
     defaultOrder: 'asc',
-    columns: ['fee_code', 'fee_name', 'unit', 'unit_price', 'currency', 'scope_type', 'container_type', 'is_active', 'description'],
+    columns: [
+      'fee_code',
+      'fee_name',
+      'unit',
+      'unit_price',
+      'currency',
+      'scope_type',
+      'customer_id',
+      'container_type',
+      'description',
+    ],
     searchFields: ['fee_code', 'fee_name'],
-    pageSize: 10,
+    pageSize: 100,
     batchOperations: {
       enabled: true,
       edit: { enabled: true },
@@ -113,7 +129,17 @@ export const feeConfig: EntityConfig = {
     inlineEdit: { enabled: true },
   },
 
-  formFields: ['fee_code', 'fee_name', 'unit', 'unit_price', 'currency', 'scope_type', 'container_type', 'description', 'is_active'],
+  formFields: [
+    'fee_code',
+    'fee_name',
+    'unit',
+    'unit_price',
+    'currency',
+    'scope_type',
+    'customer_id',
+    'container_type',
+    'description',
+  ],
 
   permissions: {
     list: ['admin', 'oms_manager', 'employee', 'user', 'oms_operator'],
@@ -124,6 +150,14 @@ export const feeConfig: EntityConfig = {
 
   prisma: {
     model: 'fee',
-    include: {},
+    include: {
+      customers: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+        },
+      },
+    },
   },
 }

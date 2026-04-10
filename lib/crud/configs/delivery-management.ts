@@ -135,7 +135,7 @@ export const deliveryManagementConfig: EntityConfig = {
       'notes',
     ],
     searchFields: ['appointment_number', 'container_number'], // 模糊搜索：预约号码、柜号
-    pageSize: 20,
+    pageSize: 100,
     inlineEdit: {
       enabled: true,
       fields: [

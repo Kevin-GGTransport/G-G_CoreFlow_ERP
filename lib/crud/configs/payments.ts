@@ -85,7 +85,7 @@ export const paymentConfig: EntityConfig = {
     defaultOrder: 'desc',
     columns: ['customer_id', 'payment_date', 'amount', 'currency', 'payment_method', 'bank_reference', 'notes'],
     searchFields: ['bank_reference'],
-    pageSize: 10,
+    pageSize: 100,
     batchOperations: {
       enabled: true,
       edit: { enabled: true },

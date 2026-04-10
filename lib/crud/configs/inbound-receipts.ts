@@ -213,7 +213,7 @@ export const inboundReceiptConfig: EntityConfig = {
       'location_registration',
     ],
     searchFields: ['container_number'], // 只搜索柜号（最重要的字段）
-    pageSize: 20,
+    pageSize: 100,
     // 筛选配置（快速筛选）- 手动定义，排除 warehouse_id 和 created_at
     filterFields: [
       // 状态筛选（多选）

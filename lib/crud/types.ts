@@ -125,6 +125,10 @@ export interface EntityConfig {
     defaultOrder: 'asc' | 'desc'
     columns: string[] // 要显示的列（如果使用自定义列，这个可以留空）
     searchFields?: string[] // 可搜索的字段（简单搜索）
+    /** 模糊搜索框占位符；不设置则根据 searchFields 自动生成 */
+    searchPlaceholder?: string
+    /** 合并快速筛选后，按 field 名排除（如直送账单不需要账单类型、柜号筛选） */
+    filterFieldKeysExclude?: string[]
     pageSize?: number
     customColumns?: any // 自定义列定义（ColumnDef[]），如果提供则使用自定义列而不是自动生成
     // 筛选配置（快速筛选，在搜索框旁边显示）
@@ -153,6 +157,10 @@ export interface EntityConfig {
     import?: {
       enabled: boolean // 是否启用批量导入
     }
+    /**
+     * 为 true 时：发票列表只保留关联订单非「已取消」的行（与直送账单规则一致；依赖 orders 关联）
+     */
+    excludeCancelledOrders?: boolean
   }
   
   // 表单字段顺序

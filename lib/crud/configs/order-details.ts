@@ -183,7 +183,7 @@ export const orderDetailConfig: EntityConfig = {
       'delivery_progress',
     ],
     searchFields: ['container_number', 'order_number'],
-    pageSize: 20,
+    pageSize: 100,
     // 筛选配置
     filterFields: [
       {

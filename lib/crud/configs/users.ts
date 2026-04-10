@@ -103,7 +103,7 @@ export const userConfig: EntityConfig = {
     defaultOrder: 'asc',
     columns: ['username', 'full_name', 'role', 'status', 'department'],
     searchFields: ['username'], // 只搜索用户名（最重要的字段）
-    pageSize: 10,
+    pageSize: 100,
     // 筛选配置（快速筛选）- 手动定义，只包含需要的角色选项
     filterFields: [
       // 角色筛选

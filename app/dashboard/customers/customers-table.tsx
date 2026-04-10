@@ -44,7 +44,7 @@ export function CustomersTable() {
   
   // 分页和排序状态
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(10)
+  const [pageSize, setPageSize] = React.useState(100)
   const [total, setTotal] = React.useState(0)
   const [sort, setSort] = React.useState('code')
   const [order, setOrder] = React.useState<'asc' | 'desc'>('asc')

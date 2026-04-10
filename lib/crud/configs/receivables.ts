@@ -101,7 +101,7 @@ export const receivableConfig: EntityConfig = {
     defaultOrder: 'asc',
     columns: ['invoice_id', 'customer_id', 'receivable_amount', 'allocated_amount', 'balance', 'due_date', 'status', 'notes'],
     searchFields: [],
-    pageSize: 10,
+    pageSize: 100,
     batchOperations: {
       enabled: true,
       edit: { enabled: true },

@@ -8,6 +8,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { syncDirectDeliveryInvoiceForOrder } from '@/lib/finance/direct-delivery-sync'
 import { BaseImportService } from './import/base-import.service'
 import { ImportConfig, ImportError } from './import/types'
 import {
@@ -360,6 +361,20 @@ const orderImportConfig: ImportConfig<OrderImportRow> = {
       maxWait: 10000, // 最大等待获取连接时间：10 秒
       timeout: 60000, // 最大事务执行时间：60 秒（适应大批量导入）
     })
+
+    for (const [orderNumber, rows] of orderGroups) {
+      if (rows[0].operation_mode === 'direct_delivery') {
+        const o = await prisma.orders.findFirst({
+          where: { order_number: orderNumber },
+          select: { order_id: true },
+        })
+        if (o) {
+          await syncDirectDeliveryInvoiceForOrder(o.order_id, userId).catch((err) => {
+            console.error(`[订单导入] 直送账单同步失败 order=${orderNumber}`, err)
+          })
+        }
+      }
+    }
   },
 }
 

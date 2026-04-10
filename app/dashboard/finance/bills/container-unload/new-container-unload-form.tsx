@@ -6,7 +6,6 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -58,7 +57,7 @@ async function loadOrderOptions(search: string): Promise<FuzzySearchOption[]> {
   }))
 }
 
-export function NewDirectDeliveryBillForm() {
+export function NewContainerUnloadBillForm() {
   const router = useRouter()
   const [submitting, setSubmitting] = React.useState(false)
 
@@ -71,7 +70,7 @@ export function NewDirectDeliveryBillForm() {
     setSubmitting(true)
     try {
       const body: Record<string, unknown> = {
-        invoice_type: "direct_delivery",
+        invoice_type: "unload",
         customer_id: Number(values.customer_id),
         notes: values.notes || undefined,
         status: values.status ?? "draft",
@@ -89,13 +88,13 @@ export function NewDirectDeliveryBillForm() {
       const result = await res.json()
       const id = result?.data?.invoice_id ?? result?.invoice_id
       if (id != null) {
-        toast.success("直送账单已创建，请添加明细")
-        router.push(`/dashboard/finance/bills/direct-delivery/${id}`)
+        toast.success("拆柜账单已创建，请添加明细")
+        router.push(`/dashboard/finance/bills/container-unload/${id}`)
       } else {
         toast.error("创建成功但未返回发票 ID")
       }
-    } catch (e: any) {
-      toast.error(e?.message || "创建失败")
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "创建失败")
     } finally {
       setSubmitting(false)
     }
@@ -167,7 +166,7 @@ export function NewDirectDeliveryBillForm() {
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push("/dashboard/finance/bills/direct-delivery")}
+              onClick={() => router.push("/dashboard/finance/bills/container-unload")}
             >
               取消
             </Button>

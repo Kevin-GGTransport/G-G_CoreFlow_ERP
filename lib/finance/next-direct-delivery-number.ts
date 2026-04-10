@@ -1,14 +1,15 @@
 /**
- * 直送账单发票号：S + 当前年(4) + 当前月(2) + 4位顺序号，每月重置
+ * 直送账单发票号：S + 年月日(8) + 当天 4 位顺序号
+ * 例：S202603310001
  */
 
 import prisma from '@/lib/prisma'
 
-export async function getNextDirectDeliveryNumber(): Promise<string> {
-  const now = new Date()
-  const yyyy = now.getFullYear()
-  const mm = String(now.getMonth() + 1).padStart(2, '0')
-  const prefix = `S${yyyy}${mm}`
+export async function getNextDirectDeliveryNumber(date: Date = new Date()): Promise<string> {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  const prefix = `S${yyyy}${mm}${dd}`
 
   const list = await prisma.invoices.findMany({
     where: {

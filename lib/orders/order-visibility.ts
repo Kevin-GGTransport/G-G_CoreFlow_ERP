@@ -10,11 +10,14 @@ import type { Prisma } from '@prisma/client'
 /** 与 lib/crud/configs/orders、Prisma schema 中 status 字符串一致 */
 export const ORDER_STATUS_ARCHIVED = 'archived' as const
 export const ORDER_STATUS_CANCELLED = 'cancelled' as const
+/** 与 UI badges 一致：历史数据可能存美式拼写，语义同已取消，出账与列表须一并排除 */
+export const ORDER_STATUS_CANCELED_US = 'canceled' as const
 
 /** 默认业务列表中排除的订单状态（与 includeArchived=true 时的「历史模式」相对） */
 export const ORDER_STATUSES_EXCLUDED_FROM_OPERATIONAL_LISTS = [
   ORDER_STATUS_ARCHIVED,
   ORDER_STATUS_CANCELLED,
+  ORDER_STATUS_CANCELED_US,
 ] as const
 
 /** URL / searchParams：是否包含完成留档订单（历史模式） */
@@ -25,12 +28,35 @@ export function parseIncludeArchived(searchParams: URLSearchParams): boolean {
   return lower === 'true' || lower === '1' || lower === 'yes'
 }
 
+/**
+ * 与同步脚本、清理脚本一致：trim + 小写后比较（兼容大小写/首尾空格）。
+ */
+export function isOrderCancelledStatus(status: string | null | undefined): boolean {
+  if (status == null) return false
+  const t = String(status).trim().toLowerCase()
+  return t === ORDER_STATUS_CANCELLED || t === ORDER_STATUS_CANCELED_US
+}
+
 /** 直接查询 orders 表时：排除完成留档与已取消 */
 export function ordersWhereRootExcludeArchived(): Prisma.ordersWhereInput {
   return {
     AND: [
-      { NOT: { status: ORDER_STATUS_ARCHIVED } },
-      { NOT: { status: ORDER_STATUS_CANCELLED } },
+      { NOT: { status: { equals: ORDER_STATUS_ARCHIVED, mode: 'insensitive' } } },
+      { NOT: { status: { equals: ORDER_STATUS_CANCELLED, mode: 'insensitive' } } },
+      { NOT: { status: { equals: ORDER_STATUS_CANCELED_US, mode: 'insensitive' } } },
+    ],
+  }
+}
+
+/**
+ * 直送账单补数等：仅排除「已取消」（含 cancelled / canceled 两种存库拼写）；**完成留档 (archived) 仍出账**。
+ * 使用大小写不敏感比较，避免库里存成 Cancelled 等变体时仍被当成「非取消」。
+ */
+export function ordersWhereRootExcludeCancelledOnly(): Prisma.ordersWhereInput {
+  return {
+    AND: [
+      { NOT: { status: { equals: ORDER_STATUS_CANCELLED, mode: 'insensitive' } } },
+      { NOT: { status: { equals: ORDER_STATUS_CANCELED_US, mode: 'insensitive' } } },
     ],
   }
 }

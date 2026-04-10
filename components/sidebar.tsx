@@ -37,6 +37,7 @@ import {
   Activity,
   Banknote,
   Wallet,
+  Calculator,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { isWmsFullAccessUsername } from "@/lib/auth/wms-full-access-users"
@@ -190,8 +191,8 @@ const menuItems: MenuItem[] = [
     ],
   },
   {
-    title: "财务管理",
-    icon: Banknote,
+    title: "业务计费",
+    icon: Calculator,
     roles: [
       "admin",
       "oms_manager",
@@ -209,9 +210,9 @@ const menuItems: MenuItem[] = [
         href: "/dashboard/finance/bills/direct-delivery",
       },
       {
-        title: "卸货工人账单",
+        title: "拆柜账单",
         icon: FileText,
-        href: "/dashboard/finance/bills/unload",
+        href: "/dashboard/finance/bills/container-unload",
       },
       {
         title: "罚款账单",
@@ -224,6 +225,32 @@ const menuItems: MenuItem[] = [
         href: "/dashboard/finance/bills/storage",
       },
       {
+        title: "卸货工人账单",
+        icon: FileText,
+        href: "/dashboard/finance/bills/unload",
+      },
+    ],
+  },
+  {
+    title: "财务",
+    icon: Banknote,
+    roles: [
+      "admin",
+      "oms_manager",
+      "employee",
+      "user",
+      "oms_operator",
+      "wms_manager",
+      "tms_manager",
+      "wms_operator",
+    ],
+    children: [
+      {
+        title: "费用管理",
+        icon: FileText,
+        href: "/dashboard/finance/fees",
+      },
+      {
         title: "应收管理",
         icon: Receipt,
         href: "/dashboard/finance/receivables",
@@ -232,11 +259,6 @@ const menuItems: MenuItem[] = [
         title: "收款管理",
         icon: Wallet,
         href: "/dashboard/finance/payments",
-      },
-      {
-        title: "费用管理",
-        icon: FileText,
-        href: "/dashboard/finance/fees",
       },
     ],
   },
@@ -319,8 +341,11 @@ function getModuleFromPath(pathname: string): string | null {
       pathname.startsWith('/dashboard/settings/drivers')) {
     return '基础数据'
   }
+  if (pathname.startsWith('/dashboard/finance/bills')) {
+    return '业务计费'
+  }
   if (pathname.startsWith('/dashboard/finance')) {
-    return '财务管理'
+    return '财务'
   }
   if (pathname.startsWith('/dashboard/settings/system') ||
       pathname.startsWith('/dashboard/settings/roles') ||
@@ -330,7 +355,6 @@ function getModuleFromPath(pathname: string): string | null {
   if (pathname.startsWith('/dashboard/oms')) return '订单管理 (OMS)'
   if (pathname.startsWith('/dashboard/tms')) return '运输管理 (TMS)'
   if (pathname.startsWith('/dashboard/wms')) return '仓库管理 (WMS)'
-  if (pathname.startsWith('/dashboard/finance')) return '财务管理'
   if (pathname.startsWith('/dashboard/reports')) return '报表分析'
   return null
 }

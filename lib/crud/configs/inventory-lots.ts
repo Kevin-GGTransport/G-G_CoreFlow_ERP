@@ -193,7 +193,7 @@ export const inventoryLotConfig: EntityConfig = {
       'delivery_progress',
     ],
     searchFields: ['container_number', 'order_detail_notes'],
-    pageSize: 20,
+    pageSize: 100,
     // 筛选配置（快速筛选）- 手动定义，排除 warehouse_id，添加送仓性质、仓点、剩余板数、未约板数、送仓进度
     filterFields: [
       // 送仓性质筛选

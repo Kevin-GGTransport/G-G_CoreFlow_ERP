@@ -67,7 +67,10 @@ export function AddToExistingAppointmentDialog({
   const [loadingAppointments, setLoadingAppointments] = React.useState(false)
   const [allAppointments, setAllAppointments] = React.useState<AppointmentOption[]>([])
   const [candidateAppointments, setCandidateAppointments] = React.useState<AppointmentOption[]>([])
-  const [appointmentSearch, setAppointmentSearch] = React.useState("")
+  /** 输入框内容（不触发请求） */
+  const [appointmentSearchInput, setAppointmentSearchInput] = React.useState("")
+  /** 点击「搜索」后写入，用于请求 API 的模糊关键词 */
+  const [appliedAppointmentSearch, setAppliedAppointmentSearch] = React.useState("")
   const [selectedAppointmentId, setSelectedAppointmentId] = React.useState<string>("")
   const [linePallets, setLinePallets] = React.useState<Record<string, number>>({})
   const [submitting, setSubmitting] = React.useState(false)
@@ -161,12 +164,19 @@ export function AddToExistingAppointmentDialog({
     setLinePallets(next)
   }, [open, selectedRows])
 
-  // 加载预约列表（打开弹窗或搜索变化时）
+  // 打开弹窗时清空搜索条件，首屏拉全量（再由仓点等规则筛成候选）
+  React.useEffect(() => {
+    if (!open) return
+    setAppointmentSearchInput("")
+    setAppliedAppointmentSearch("")
+  }, [open])
+
+  // 加载预约列表：仅打开弹窗或点击「搜索」后 appliedAppointmentSearch 变化时请求
   React.useEffect(() => {
     if (!open) return
     setLoadingAppointments(true)
     const params = new URLSearchParams({ limit: "100", page: "1" })
-    if (appointmentSearch.trim()) params.set("search", appointmentSearch.trim())
+    if (appliedAppointmentSearch.trim()) params.set("search", appliedAppointmentSearch.trim())
     fetch(`/api/oms/appointments?${params}`)
       .then((r) => r.json())
       .then((res) => {
@@ -183,7 +193,11 @@ export function AddToExistingAppointmentDialog({
       })
       .catch(() => toast.error("加载预约列表失败"))
       .finally(() => setLoadingAppointments(false))
-  }, [open, appointmentSearch])
+  }, [open, appliedAppointmentSearch])
+
+  const runAppointmentSearch = React.useCallback(() => {
+    setAppliedAppointmentSearch(appointmentSearchInput.trim())
+  }, [appointmentSearchInput])
 
   /** 执行加入预约的 API 请求（校验通过后或用户确认不一致仍加入时调用） */
   const doSubmit = React.useCallback(async () => {
@@ -285,14 +299,31 @@ export function AddToExistingAppointmentDialog({
           <div className="flex-1 overflow-y-auto space-y-4 py-2">
             {/* 预约选择 */}
             <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <Label>可选预约（根据选中明细的仓点自动筛选）</Label>
-                <Input
-                  placeholder="搜索预约号码（可选）"
-                  value={appointmentSearch}
-                  onChange={(e) => setAppointmentSearch(e.target.value)}
-                  className="max-w-[200px]"
-                />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <Label className="shrink-0">可选预约（根据选中明细的仓点自动筛选）</Label>
+                <div className="flex w-full gap-2 sm:max-w-[340px]">
+                  <Input
+                    placeholder="预约号码关键词"
+                    value={appointmentSearchInput}
+                    onChange={(e) => setAppointmentSearchInput(e.target.value)}
+                    className="flex-1 min-w-0"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault()
+                        runAppointmentSearch()
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="shrink-0"
+                    disabled={loadingAppointments}
+                    onClick={runAppointmentSearch}
+                  >
+                    搜索
+                  </Button>
+                </div>
               </div>
               {loadingAppointments ? (
                 <div className="flex items-center justify-center py-8">

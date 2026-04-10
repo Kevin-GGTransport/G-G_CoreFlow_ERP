@@ -7,7 +7,7 @@ import { redirect, notFound } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import prisma from "@/lib/prisma"
 import { serializeBigInt } from "@/lib/api/helpers"
-import { DirectDeliveryBillDetailClient } from "./direct-delivery-bill-detail-client"
+import { InvoiceBillDetailClient } from "@/components/finance/invoice-bill-detail-client"
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -24,7 +24,13 @@ export default async function DirectDeliveryBillDetailPage({ params }: PageProps
     where: { invoice_id: BigInt(id) },
     include: {
       customers: { select: { id: true, code: true, name: true } },
-      orders: { select: { order_id: true, order_number: true } },
+      orders: {
+        select: {
+          order_id: true,
+          order_number: true,
+          container_type: true,
+        },
+      },
     },
   })
 
@@ -35,7 +41,12 @@ export default async function DirectDeliveryBillDetailPage({ params }: PageProps
   return (
     <DashboardLayout user={session.user || {}}>
       <div className="container max-w-6xl py-8">
-        <DirectDeliveryBillDetailClient invoiceId={id} invoice={serialized} />
+        <InvoiceBillDetailClient
+          invoiceId={id}
+          invoice={serialized}
+          backListHref="/dashboard/finance/bills/direct-delivery"
+          billKindLabel="直送账单"
+        />
       </div>
     </DashboardLayout>
   )

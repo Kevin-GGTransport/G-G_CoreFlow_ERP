@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -69,6 +70,7 @@ export function CreateOrderDialog({
     status: 'pending' as 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled' | 'archived',
     operation_mode: null as 'unload' | 'direct_delivery' | null,
     delivery_location_id: null as string | number | null,
+    notes: '',
   })
   
   // 第二步：仓点明细
@@ -91,6 +93,7 @@ export function CreateOrderDialog({
       status: 'pending',
       operation_mode: null,
       delivery_location_id: null,
+      notes: '',
     })
     setOrderDetails([])
     setEditingRowId(null)
@@ -236,6 +239,7 @@ export function CreateOrderDialog({
           status: orderData.status || 'pending',
           operation_mode: orderData.operation_mode || null,
           delivery_location_id: orderData.delivery_location_id ? Number(orderData.delivery_location_id) : null,
+          notes: orderData.notes.trim() || null,
           total_amount: 0, // 默认值
           discount_amount: 0,
           tax_amount: 0,
@@ -499,6 +503,18 @@ export function CreateOrderDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="order_notes">备注（主行）</Label>
+              <Textarea
+                id="order_notes"
+                value={orderData.notes}
+                onChange={(e) => setOrderData({ ...orderData, notes: e.target.value })}
+                placeholder="订单主行备注，可选"
+                rows={3}
+                className="resize-y min-h-[80px]"
+              />
             </div>
           </div>
         ) : (
