@@ -385,6 +385,9 @@ export async function GET(request: NextRequest) {
       {
         error: '获取预约管理列表失败',
         message: error.message,
+        // 生产环境也返回 Prisma 错误码（如 P2022），便于在浏览器 Network 里排查，无需登服务器
+        ...(error?.code != null ? { code: String(error.code) } : {}),
+        ...(error?.meta != null ? { meta: error.meta } : {}),
         details: process.env.NODE_ENV === 'development' ? {
           code: error.code,
           meta: error.meta,
