@@ -251,7 +251,7 @@ function getPageTitle(pathname: string): string {
     "/dashboard/finance/bills/direct-delivery": "直送账单",
     "/dashboard/finance/bills/container-unload": "拆柜账单",
     "/dashboard/finance/bills/unload": "卸货工人账单",
-    "/dashboard/finance/bills/penalty": "罚款账单",
+    "/dashboard/finance/bills/penalty": "负数账单",
     "/dashboard/finance/bills/storage": "仓储账单",
     "/dashboard/finance/fees": "费用管理",
     "/dashboard/finance/receivables": "应收管理",

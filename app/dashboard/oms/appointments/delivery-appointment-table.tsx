@@ -131,6 +131,7 @@ export function DeliveryAppointmentTable() {
         confirmed_start: row.confirmed_start,
         total_pallets: row.total_pallets,
         rejected: row.rejected,
+        enabled: row.enabled ?? true,
         po: row.po,
         notes: row.notes,
         status: row.status,
@@ -269,6 +270,7 @@ export function DeliveryAppointmentTable() {
       estimatedPallets: true, // 排车板数（原预计板数）
       actualPallets: true, // 实际板数（入库对应的实际板数）
       unloadTime: true, // 拆柜时间（来自入库管理，按明细对应订单关联）
+      storageLocation: true, // 现在位置：与入库管理详情 inventory_lots.storage_location_code 同源
       ignoreUnloadTimeCheck: true, // 忽略：勾选后柜号强制绿色
       windowPeriod: true, // 窗口期（来自订单明细）
       po: false, // 主表明细下拉子表内不显示 PO

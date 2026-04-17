@@ -29,7 +29,7 @@ export const invoiceConfig: EntityConfig = {
       options: [
         { label: '直送', value: 'direct_delivery' },
         { label: '拆柜', value: 'unload' },
-        { label: '罚款', value: 'penalty' },
+        { label: '负数账单', value: 'penalty' },
         { label: '仓储', value: 'storage' },
       ],
     },
@@ -91,6 +91,7 @@ export const invoiceConfig: EntityConfig = {
       sortable: true,
       options: [
         { label: '草稿', value: 'draft' },
+        { label: '已审核', value: 'audited' },
         { label: '已开票', value: 'issued' },
         { label: '作废', value: 'void' },
       ],
@@ -130,7 +131,7 @@ export const invoiceConfig: EntityConfig = {
         options: [
           { label: '直送', value: 'direct_delivery' },
           { label: '拆柜', value: 'unload' },
-          { label: '罚款', value: 'penalty' },
+          { label: '负数账单', value: 'penalty' },
           { label: '仓储', value: 'storage' },
         ],
       },
@@ -207,5 +208,19 @@ export const containerUnloadBillConfig: EntityConfig = {
   permissions: {
     ...invoiceConfig.permissions,
     create: [], // 新建通过 /bills/container-unload/new
+  },
+}
+
+/** 负数账单（invoice_type=penalty）：金额可为负；存库枚举值仍为 penalty */
+export const penaltyBillConfig: EntityConfig = {
+  ...invoiceConfig,
+  displayName: '负数账单',
+  pluralName: '负数账单',
+  detailPath: '/dashboard/finance/bills/penalty',
+  list: {
+    ...invoiceConfig.list,
+    columns: ['invoice_number', 'customer_id', 'order_id', 'invoice_date', 'status', 'total_amount', 'currency', 'notes'],
+    searchPlaceholder: '搜索发票号、柜号...',
+    filterFieldKeysExclude: ['invoice_type', 'order_id'],
   },
 }

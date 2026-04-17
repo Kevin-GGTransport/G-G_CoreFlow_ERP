@@ -152,6 +152,7 @@ export async function GET(
     
     // 拒收、校验PO、校验装车单、可做单、已做单
     const rejected = serialized.rejected ?? false;
+    const enabled = serialized.enabled ?? true;
     const verify_po = serialized.verify_po ?? false;
     const verify_loading_sheet = serialized.verify_loading_sheet ?? false;
     const can_create_sheet = serialized.can_create_sheet ?? false;
@@ -191,6 +192,7 @@ export async function GET(
       eta,
       total_pallets: totalPallets ?? 0,
       rejected: rejected,
+      enabled,
       verify_po: verify_po,
       verify_loading_sheet: verify_loading_sheet,
       can_create_sheet: can_create_sheet,
@@ -380,6 +382,9 @@ export async function PUT(
     }
     if (data.rejected !== undefined) {
       updateData.rejected = Boolean(data.rejected);
+    }
+    if (data.enabled !== undefined) {
+      updateData.enabled = Boolean(data.enabled);
     }
     if (data.verify_po !== undefined) {
       updateData.verify_po = Boolean(data.verify_po);
@@ -603,7 +608,8 @@ export async function PUT(
     const can_create_sheet = serialized.can_create_sheet ?? false;
     const has_created_sheet = serialized.has_created_sheet ?? false;
     const rejected = serialized.rejected ?? false;
-    
+    const enabled = serialized.enabled ?? true;
+
     return NextResponse.json({
       success: true,
       message: '更新成功',
@@ -625,6 +631,7 @@ export async function PUT(
         can_create_sheet: can_create_sheet,
         has_created_sheet: has_created_sheet,
         rejected: rejected,
+        enabled,
       }
     });
   } catch (error: any) {

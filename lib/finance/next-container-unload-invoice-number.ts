@@ -1,5 +1,5 @@
 /**
- * 拆柜账单（发票 invoice_type=unload）发票号：U + 年(4) + 月(2) + 4 位顺序号，每月重置
+ * 拆柜账单（发票 invoice_type=unload）发票号：C + 年(4) + 月(2) + 4 位顺序号，每月重置
  */
 
 import prisma from '@/lib/prisma'
@@ -8,7 +8,7 @@ export async function getNextContainerUnloadInvoiceNumber(): Promise<string> {
   const now = new Date()
   const yyyy = now.getFullYear()
   const mm = String(now.getMonth() + 1).padStart(2, '0')
-  const prefix = `U${yyyy}${mm}`
+  const prefix = `C${yyyy}${mm}`
 
   const list = await prisma.invoices.findMany({
     where: {

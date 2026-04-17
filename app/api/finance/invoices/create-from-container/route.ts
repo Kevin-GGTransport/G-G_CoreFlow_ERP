@@ -1,6 +1,6 @@
 /**
  * POST /api/finance/invoices/create-from-container
- * 按柜号（订单 order_number）查找订单；操作方式为直送则 1:1 同步直送账单（与订单新建逻辑一致）。
+ * 按柜号（订单 order_number）查找订单；操作方式为直送则同步直送账单，拆柜则同步拆柜账单（与订单侧逻辑一致）。
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -8,6 +8,7 @@ import { checkPermission, serializeBigInt } from '@/lib/api/helpers'
 import { invoiceConfig } from '@/lib/crud/configs/invoices'
 import prisma from '@/lib/prisma'
 import { syncDirectDeliveryInvoiceForOrder } from '@/lib/finance/direct-delivery-sync'
+import { syncContainerUnloadInvoiceForOrder } from '@/lib/finance/container-unload-sync'
 import {
   ORDER_STATUS_CANCELLED,
   ORDER_STATUS_CANCELED_US,
@@ -53,17 +54,23 @@ export async function POST(request: NextRequest) {
       order.status === ORDER_STATUS_CANCELLED ||
       order.status === ORDER_STATUS_CANCELED_US
     ) {
-      return NextResponse.json({ error: '该订单已取消，不生成直送账单' }, { status: 400 })
+      return NextResponse.json({ error: '该订单已取消，不生成账单' }, { status: 400 })
     }
 
-    if (order.operation_mode !== 'direct_delivery') {
-      return NextResponse.json({ error: '该订单非直送订单（操作方式需为直送）' }, { status: 400 })
+    if (order.operation_mode !== 'direct_delivery' && order.operation_mode !== 'unload') {
+      return NextResponse.json(
+        { error: '该订单操作方式需为直送或拆柜才可按柜号同步账单' },
+        { status: 400 }
+      )
     }
 
-    const result = await syncDirectDeliveryInvoiceForOrder(order.order_id, userId)
+    const result =
+      order.operation_mode === 'direct_delivery'
+        ? await syncDirectDeliveryInvoiceForOrder(order.order_id, userId)
+        : await syncContainerUnloadInvoiceForOrder(order.order_id, userId)
     if (!result.ok || result.invoice_id == null) {
       return NextResponse.json(
-        { error: result.error ?? '同步直送账单失败' },
+        { error: result.error ?? '同步账单失败' },
         { status: 500 }
       )
     }

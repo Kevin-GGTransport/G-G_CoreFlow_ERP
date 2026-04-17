@@ -8,6 +8,10 @@ import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { getNextDirectDeliveryNumber } from '@/lib/finance/next-direct-delivery-number'
 import { recalcInvoiceTotal } from '@/lib/finance/recalc-invoice-total'
+import {
+  downgradeAuditedInvoiceAfterLineMutation,
+  getReceivableWithdrawBlockReason,
+} from '@/lib/finance/invoice-receivable-sync'
 import { isOrderCancelledStatus } from '@/lib/orders/order-visibility'
 import { feeMatchesContainer } from '@/lib/finance/fee-matching'
 
@@ -147,6 +151,7 @@ export async function syncDirectDeliveryInvoiceForOrder(
       where: { order_id: orderId, invoice_type: 'direct_delivery' },
     })
 
+    let isNewInvoice = false
     if (!invoice) {
       const number = await getNextDirectDeliveryNumber(invoiceDate)
       invoice = await prisma.invoices.create({
@@ -164,15 +169,17 @@ export async function syncDirectDeliveryInvoiceForOrder(
           updated_by: userId ?? null,
         },
       })
-    } else {
-      await prisma.invoice_line_items.deleteMany({ where: { invoice_id: invoice.invoice_id } })
-      await prisma.invoices.update({
-        where: { invoice_id: invoice.invoice_id },
-        data: { updated_by: userId ?? undefined, updated_at: new Date() },
-      })
+      isNewInvoice = true
     }
 
     const invId = invoice.invoice_id
+    const wasAudited = invoice.status === 'audited'
+    if (!isNewInvoice && wasAudited) {
+      const block = await getReceivableWithdrawBlockReason(prisma, invId)
+      if (block) {
+        return { ok: false, error: 'receivable_blocked' }
+      }
+    }
     const details = order.order_detail ?? []
     const lines: Prisma.invoice_line_itemsCreateManyInput[] = []
     let sort = 0
@@ -228,10 +235,22 @@ export async function syncDirectDeliveryInvoiceForOrder(
       updated_by: userId ?? null,
     })
 
-    if (lines.length > 0) {
-      await prisma.invoice_line_items.createMany({ data: lines })
-    }
-    await recalcInvoiceTotal(invId)
+    await prisma.$transaction(async (tx) => {
+      if (!isNewInvoice) {
+        await tx.invoice_line_items.deleteMany({ where: { invoice_id: invId } })
+        await tx.invoices.update({
+          where: { invoice_id: invId },
+          data: { updated_by: userId ?? undefined, updated_at: new Date() },
+        })
+      }
+      if (lines.length > 0) {
+        await tx.invoice_line_items.createMany({ data: lines })
+      }
+      await recalcInvoiceTotal(invId, tx)
+      if (!isNewInvoice && wasAudited) {
+        await downgradeAuditedInvoiceAfterLineMutation(tx, invId, userId ?? null)
+      }
+    })
 
     return { ok: true, invoice_id: invId }
   } catch (e) {

@@ -3,6 +3,7 @@ import { createListHandler, createCreateHandler } from '@/lib/crud/api-handler'
 import { orderConfig } from '@/lib/crud/configs/orders'
 import { inboundSyncService } from '@/lib/services/inbound-sync.service'
 import { scheduleDirectDeliveryInvoiceSync } from '@/lib/finance/direct-delivery-sync'
+import { scheduleContainerUnloadInvoiceSync } from '@/lib/finance/container-unload-sync'
 import { auth } from '@/auth'
 
 // GET - 获取订单列表
@@ -34,6 +35,12 @@ export async function POST(request: NextRequest) {
         const session = await auth()
         const userId = session?.user?.id ? BigInt(session.user.id) : undefined
         scheduleDirectDeliveryInvoiceSync(BigInt(orderId), userId)
+      }
+
+      if (orderId && operationMode === 'unload') {
+        const session = await auth()
+        const userId = session?.user?.id ? BigInt(session.user.id) : undefined
+        scheduleContainerUnloadInvoiceSync(BigInt(orderId), userId)
       }
       
       // 返回原始响应

@@ -8,6 +8,10 @@ import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
 import { recalcInvoiceTotal } from '@/lib/finance/recalc-invoice-total'
 import { listFeesForInvoiceLinePicker, type FeeForMatch } from '@/lib/finance/fee-matching'
+import {
+  downgradeAuditedInvoiceAfterLineMutation,
+  getReceivableWithdrawBlockReason,
+} from '@/lib/finance/invoice-receivable-sync'
 
 export async function GET(
   request: NextRequest,
@@ -107,26 +111,36 @@ export async function POST(
       return NextResponse.json({ error: '数量必须大于 0' }, { status: 400 })
     }
 
-    if (
-      unitPriceOverride != null &&
-      (Number.isNaN(unitPriceOverride) || unitPriceOverride < 0)
-    ) {
-      return NextResponse.json({ error: '单价无效' }, { status: 400 })
-    }
-
     const invId = BigInt(invoiceId)
     const invoice = await prisma.invoices.findUnique({
       where: { invoice_id: invId },
       select: {
         customer_id: true,
+        invoice_type: true,
+        status: true,
         orders: { select: { container_type: true } },
       },
     })
     if (!invoice) {
       return NextResponse.json({ error: '账单不存在' }, { status: 404 })
     }
+    if (invoice.status === 'audited') {
+      const block = await getReceivableWithdrawBlockReason(prisma, invId)
+      if (block) {
+        return NextResponse.json({ error: block }, { status: 409 })
+      }
+    }
     if (invoice.customer_id == null) {
       return NextResponse.json({ error: '账单缺少客户' }, { status: 400 })
+    }
+
+    const allowNegativeAmounts = invoice.invoice_type === 'penalty'
+    if (
+      unitPriceOverride != null &&
+      (Number.isNaN(unitPriceOverride) ||
+        (!allowNegativeAmounts && unitPriceOverride < 0))
+    ) {
+      return NextResponse.json({ error: '单价无效' }, { status: 400 })
     }
 
     const fee = await prisma.fee.findUnique({
@@ -184,6 +198,7 @@ export async function POST(
         },
       })
       await recalcInvoiceTotal(invId, tx)
+      await downgradeAuditedInvoiceAfterLineMutation(tx, invId, userId)
       return created
     })
 

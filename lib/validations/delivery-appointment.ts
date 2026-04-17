@@ -14,6 +14,7 @@ export const deliveryAppointmentCreateSchema = z.object({
   confirmed_end: z.string().optional().nullable(),
   status: z.string().optional().nullable(),
   rejected: z.boolean().optional().nullable(),
+  enabled: z.boolean().optional().nullable(),
   verify_po: z.boolean().optional().nullable(),
   verify_loading_sheet: z.boolean().optional().nullable(),
   can_create_sheet: z.boolean().optional().nullable(),

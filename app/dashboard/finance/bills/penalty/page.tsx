@@ -1,12 +1,12 @@
 /**
- * 罚款账单 - 与发票管理同表头，按账单类型筛选
+ * 负数账单（invoice_type=penalty）- 金额可为负
  */
 
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { EntityTable } from "@/components/crud/entity-table"
-import { invoiceConfig } from "@/lib/crud/configs/invoices"
+import { penaltyBillConfig } from "@/lib/crud/configs/invoices"
 
 export default async function PenaltyBillsPage() {
   const session = await auth()
@@ -18,7 +18,7 @@ export default async function PenaltyBillsPage() {
   return (
     <DashboardLayout user={session.user || {}}>
       <EntityTable
-        config={invoiceConfig}
+        config={penaltyBillConfig}
         initialFilterValues={{ invoice_type: "penalty" }}
       />
     </DashboardLayout>

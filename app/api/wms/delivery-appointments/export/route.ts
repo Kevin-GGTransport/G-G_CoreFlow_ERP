@@ -159,6 +159,7 @@ export async function GET(request: NextRequest) {
         confirmed_start: appointment.confirmed_start,
         total_pallets: totalPallets,
         rejected: appointment.rejected,
+        enabled: appointment.enabled ?? true,
         po: appointment.po,
         notes: appointment.notes,
         status: appointment.status,

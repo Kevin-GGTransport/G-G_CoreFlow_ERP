@@ -18,6 +18,7 @@ export interface AppointmentExportData {
   confirmed_start: Date | string | null
   total_pallets: number | null
   rejected: boolean | null
+  enabled: boolean | null
   po: string | null
   notes: string | null
   status: string | null
@@ -128,6 +129,7 @@ export async function generateAppointmentExportExcel(
     { header: '确认开始时间', key: 'confirmed_start', width: 20 },
     { header: '总板数', key: 'total_pallets', width: 10 },
     { header: '拒收', key: 'rejected', width: 8 },
+    { header: '启用', key: 'enabled', width: 8 },
     { header: 'PO', key: 'po', width: 20 },
     { header: '备注', key: 'notes', width: 35 },
     { header: '创建时间', key: 'created_at', width: 20 },
@@ -159,6 +161,7 @@ export async function generateAppointmentExportExcel(
       confirmed_start: formatDateTime(appointment.confirmed_start),
       total_pallets: appointment.total_pallets ?? '',
       rejected: formatBoolean(appointment.rejected),
+      enabled: formatBoolean(appointment.enabled),
       po: appointment.po || '',
       notes: appointment.notes || '',
       created_at: formatDate(appointment.created_at),

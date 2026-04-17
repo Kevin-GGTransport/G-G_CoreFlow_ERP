@@ -101,6 +101,12 @@ export const deliveryAppointmentConfig: EntityConfig = {
       type: 'boolean',
       sortable: true,
     },
+    enabled: {
+      key: 'enabled',
+      label: '启用',
+      type: 'boolean',
+      sortable: true,
+    },
     verify_po: {
       key: 'verify_po',
       label: '校验PO',
@@ -167,6 +173,7 @@ export const deliveryAppointmentConfig: EntityConfig = {
     defaultOrder: 'desc',
     columns: [
       'reference_number',
+      'enabled',
       'delivery_method',
       'appointment_account',
       'appointment_type',
@@ -215,7 +222,7 @@ export const deliveryAppointmentConfig: EntityConfig = {
       enabled: true,
       edit: {
         enabled: true,
-        fields: ['reference_number', 'origin_location_id', 'location_id', 'confirmed_start', 'delivery_method', 'appointment_type', 'appointment_account', 'rejected', 'verify_po', 'can_create_sheet', 'po', 'notes'],
+        fields: ['reference_number', 'origin_location_id', 'location_id', 'confirmed_start', 'delivery_method', 'appointment_type', 'appointment_account', 'rejected', 'enabled', 'verify_po', 'can_create_sheet', 'po', 'notes'],
       },
       delete: {
         enabled: true,
@@ -225,7 +232,7 @@ export const deliveryAppointmentConfig: EntityConfig = {
     inlineEdit: {
       enabled: true,
       cellClickToEdit: false,
-      fields: ['reference_number', 'origin_location_id', 'location_id', 'confirmed_start', 'delivery_method', 'appointment_type', 'appointment_account', 'rejected', 'verify_po', 'can_create_sheet', 'po', 'notes'],
+      fields: ['reference_number', 'origin_location_id', 'location_id', 'confirmed_start', 'delivery_method', 'appointment_type', 'appointment_account', 'rejected', 'enabled', 'verify_po', 'can_create_sheet', 'po', 'notes'],
     },
   },
   
@@ -239,6 +246,7 @@ export const deliveryAppointmentConfig: EntityConfig = {
     'appointment_account',
     'confirmed_start',
     'rejected',
+    'enabled',
     'verify_po',
     'verify_loading_sheet',
     'po',

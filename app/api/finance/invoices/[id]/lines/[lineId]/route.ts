@@ -8,6 +8,10 @@ import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { serializeBigInt } from '@/lib/api/helpers'
 import { recalcInvoiceTotal } from '@/lib/finance/recalc-invoice-total'
+import {
+  downgradeAuditedInvoiceAfterLineMutation,
+  getReceivableWithdrawBlockReason,
+} from '@/lib/finance/invoice-receivable-sync'
 
 export async function PATCH(
   request: NextRequest,
@@ -41,6 +45,21 @@ export async function PATCH(
 
     const invId = BigInt(invoiceId)
     const lineIdBigInt = BigInt(lineId)
+    const parentInvoice = await prisma.invoices.findUnique({
+      where: { invoice_id: invId },
+      select: { invoice_type: true, status: true },
+    })
+    if (!parentInvoice) {
+      return NextResponse.json({ error: '账单不存在' }, { status: 404 })
+    }
+    if (parentInvoice.status === 'audited') {
+      const block = await getReceivableWithdrawBlockReason(prisma, invId)
+      if (block) {
+        return NextResponse.json({ error: block }, { status: 409 })
+      }
+    }
+    const allowNegativeAmounts = parentInvoice.invoice_type === 'penalty'
+
     const existing = await prisma.invoice_line_items.findFirst({
       where: { id: lineIdBigInt, invoice_id: invId },
       select: {
@@ -60,8 +79,11 @@ export async function PATCH(
     if (Number.isNaN(qtyNum) || qtyNum <= 0) {
       return NextResponse.json({ error: '数量必须大于 0' }, { status: 400 })
     }
-    if (Number.isNaN(priceNum) || priceNum < 0) {
-      return NextResponse.json({ error: '单价不能为负数' }, { status: 400 })
+    if (
+      Number.isNaN(priceNum) ||
+      (!allowNegativeAmounts && priceNum < 0)
+    ) {
+      return NextResponse.json({ error: '单价无效' }, { status: 400 })
     }
 
     const totalAmount = qtyNum * priceNum
@@ -82,6 +104,7 @@ export async function PATCH(
         },
       })
       await recalcInvoiceTotal(invId, tx)
+      await downgradeAuditedInvoiceAfterLineMutation(tx, invId, userId)
       return line
     })
 
@@ -119,11 +142,25 @@ export async function DELETE(
       return NextResponse.json({ error: '明细不存在' }, { status: 404 })
     }
 
+    const parentForDelete = await prisma.invoices.findUnique({
+      where: { invoice_id: invId },
+      select: { status: true },
+    })
+    if (parentForDelete?.status === 'audited') {
+      const block = await getReceivableWithdrawBlockReason(prisma, invId)
+      if (block) {
+        return NextResponse.json({ error: block }, { status: 409 })
+      }
+    }
+
+    const userId = session.user?.id ? BigInt(session.user.id) : null
+
     await prisma.$transaction(async (tx) => {
       await tx.invoice_line_items.delete({
         where: { id: lineIdBigInt },
       })
       await recalcInvoiceTotal(invId, tx)
+      await downgradeAuditedInvoiceAfterLineMutation(tx, invId, userId)
     })
 
     return NextResponse.json({ success: true })

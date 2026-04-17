@@ -1227,6 +1227,15 @@ export function createCreateHandler(config: EntityConfig) {
         }
       }
 
+      // 发票：创建即为「已审核」时同步到应收
+      if (config.prisma?.model === 'invoices' && item.status === 'audited') {
+        const userId = permissionResult.user?.id ? BigInt(permissionResult.user.id) : null
+        const { upsertReceivableForAuditedInvoice } = await import(
+          '@/lib/finance/invoice-receivable-sync'
+        )
+        await upsertReceivableForAuditedInvoice(prisma, item.invoice_id, userId)
+      }
+
       return NextResponse.json(
         { data: serializeBigInt(item) },
         { status: 201 }
@@ -1478,6 +1487,47 @@ export function createUpdateHandler(config: EntityConfig) {
           }
           return updated
         })
+      } else if (config.prisma?.model === 'invoices') {
+        const invoicePk = BigInt(resolvedParams.id)
+        const beforeInvoice = await prismaModel.findUnique({
+          where: { [idField]: invoicePk },
+          select: { invoice_id: true, status: true },
+        })
+        const prevStatus = beforeInvoice?.status ?? null
+        const effectiveNewStatus =
+          processedData.status !== undefined ? processedData.status : prevStatus
+
+        if (prevStatus === 'audited' && effectiveNewStatus !== 'audited') {
+          const { getReceivableWithdrawBlockReason } = await import(
+            '@/lib/finance/invoice-receivable-sync'
+          )
+          const block = await getReceivableWithdrawBlockReason(prisma, invoicePk)
+          if (block) {
+            return NextResponse.json({ error: block }, { status: 409 })
+          }
+        }
+
+        item = await prismaModel.update({
+          where: { [idField]: invoicePk },
+          data: processedData,
+        })
+
+        const userId = permissionResult.user?.id ? BigInt(permissionResult.user.id) : null
+        const { upsertReceivableForAuditedInvoice, withdrawReceivableForInvoice } =
+          await import('@/lib/finance/invoice-receivable-sync')
+
+        try {
+          if (item.status === 'audited') {
+            await upsertReceivableForAuditedInvoice(prisma, item.invoice_id, userId)
+          } else if (prevStatus === 'audited' && item.status !== 'audited') {
+            await withdrawReceivableForInvoice(prisma, item.invoice_id)
+          }
+        } catch (e: any) {
+          if (e?.name === 'ReceivableWithdrawError') {
+            return NextResponse.json({ error: e.message }, { status: 409 })
+          }
+          throw e
+        }
       } else {
         item = await prismaModel.update({
           where: { [idField]: BigInt(resolvedParams.id) },

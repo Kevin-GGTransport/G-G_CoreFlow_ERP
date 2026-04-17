@@ -9,6 +9,7 @@
 
 import prisma from '@/lib/prisma'
 import { syncDirectDeliveryInvoiceForOrder } from '@/lib/finance/direct-delivery-sync'
+import { syncContainerUnloadInvoiceForOrder } from '@/lib/finance/container-unload-sync'
 import { BaseImportService } from './import/base-import.service'
 import { ImportConfig, ImportError } from './import/types'
 import {
@@ -363,15 +364,22 @@ const orderImportConfig: ImportConfig<OrderImportRow> = {
     })
 
     for (const [orderNumber, rows] of orderGroups) {
-      if (rows[0].operation_mode === 'direct_delivery') {
+      const mode = rows[0].operation_mode
+      if (mode === 'direct_delivery' || mode === 'unload') {
         const o = await prisma.orders.findFirst({
           where: { order_number: orderNumber },
           select: { order_id: true },
         })
         if (o) {
-          await syncDirectDeliveryInvoiceForOrder(o.order_id, userId).catch((err) => {
-            console.error(`[订单导入] 直送账单同步失败 order=${orderNumber}`, err)
-          })
+          if (mode === 'direct_delivery') {
+            await syncDirectDeliveryInvoiceForOrder(o.order_id, userId).catch((err) => {
+              console.error(`[订单导入] 直送账单同步失败 order=${orderNumber}`, err)
+            })
+          } else {
+            await syncContainerUnloadInvoiceForOrder(o.order_id, userId).catch((err) => {
+              console.error(`[订单导入] 拆柜账单同步失败 order=${orderNumber}`, err)
+            })
+          }
         }
       }
     }

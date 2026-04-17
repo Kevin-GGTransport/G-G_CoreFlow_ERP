@@ -30,6 +30,7 @@ import { toast } from "sonner"
 
 const STATUS_MAP: Record<string, string> = {
   draft: "草稿",
+  audited: "已审核",
   issued: "已开票",
   void: "作废",
 }
@@ -51,6 +52,8 @@ export interface InvoiceBillDetailClientProps {
   invoiceId: string
   invoice: {
     invoice_id: string | number
+    /** 为 penalty 时表示负数账单，明细单价可为负 */
+    invoice_type?: string | null
     customer_id?: string | number
     invoice_number?: string
     invoice_date?: string
@@ -76,6 +79,7 @@ export function InvoiceBillDetailClient({
   backListHref,
   billKindLabel,
 }: InvoiceBillDetailClientProps) {
+  const isPenaltyInvoice = invoice.invoice_type === "penalty"
   const router = useRouter()
   const [lines, setLines] = React.useState<LineRow[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -103,6 +107,7 @@ export function InvoiceBillDetailClient({
   const [editQuantity, setEditQuantity] = React.useState("")
   const [editUnitPrice, setEditUnitPrice] = React.useState("")
   const [editLineNotes, setEditLineNotes] = React.useState("")
+  const [deleteLineId, setDeleteLineId] = React.useState<string | number | null>(null)
 
   const loadLines = React.useCallback(async () => {
     setLoading(true)
@@ -199,8 +204,8 @@ export function InvoiceBillDetailClient({
       return
     }
     const p = parseFloat(lineUnitPrice)
-    if (Number.isNaN(p) || p < 0) {
-      toast.error("请输入有效单价")
+    if (Number.isNaN(p) || (!isPenaltyInvoice && p < 0)) {
+      toast.error(isPenaltyInvoice ? "请输入有效单价（可为负数）" : "请输入有效单价")
       return
     }
     setSubmitting(true)
@@ -246,8 +251,8 @@ export function InvoiceBillDetailClient({
       toast.error("数量必须大于 0")
       return
     }
-    if (Number.isNaN(p) || p < 0) {
-      toast.error("单价不能为负数")
+    if (Number.isNaN(p) || (!isPenaltyInvoice && p < 0)) {
+      toast.error(isPenaltyInvoice ? "单价无效（负数账单允许负单价）" : "单价不能为负数")
       return
     }
     setSubmitting(true)
@@ -277,12 +282,13 @@ export function InvoiceBillDetailClient({
     }
   }
 
-  const deleteLine = async (lineId: string | number) => {
-    if (!confirm("确定删除该明细？")) return
+  const confirmDeleteLine = async () => {
+    if (deleteLineId == null) return
+    const lineId = deleteLineId
     setSubmitting(true)
     try {
       const res = await fetch(
-        `/api/finance/invoices/${invoiceId}/lines/${lineId}`,
+        `/api/finance/invoices/${invoiceId}/lines/${encodeURIComponent(String(lineId))}`,
         { method: "DELETE" }
       )
       if (!res.ok) {
@@ -290,6 +296,7 @@ export function InvoiceBillDetailClient({
         throw new Error(err?.error ?? "删除失败")
       }
       toast.success("已删除")
+      setDeleteLineId(null)
       loadLines()
       router.refresh()
     } catch (e: any) {
@@ -393,7 +400,14 @@ export function InvoiceBillDetailClient({
               </TableHeader>
               <TableBody>
                 {lines.map((line) => (
-                  <TableRow key={line.id}>
+                  <TableRow
+                    key={line.id}
+                    className={
+                      invoice.status === "issued"
+                        ? "bg-green-50/90 border-green-100 hover:bg-green-50 dark:bg-green-950/30 dark:border-green-900 dark:hover:bg-green-950/40"
+                        : undefined
+                    }
+                  >
                     <TableCell>{line.fee_code ?? "-"}</TableCell>
                     <TableCell>{line.fee_name ?? "-"}</TableCell>
                     <TableCell>{line.unit ?? "-"}</TableCell>
@@ -407,10 +421,28 @@ export function InvoiceBillDetailClient({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => openEditLine(line)} title="编辑单价、数量、备注">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openEditLine(line)}
+                          title="编辑单价、数量、备注"
+                        >
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => deleteLine(line.id)}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            if (line.id == null || line.id === "") {
+                              toast.error("明细缺少 ID，无法删除")
+                              return
+                            }
+                            setDeleteLineId(line.id)
+                          }}
+                          title="删除该明细"
+                        >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -428,7 +460,9 @@ export function InvoiceBillDetailClient({
           <DialogHeader>
             <DialogTitle>添加明细</DialogTitle>
             <DialogDescription>
-              列表默认展示当前客户且柜型匹配的全部费用；输入关键字后点击「搜索」进行模糊筛选。下方可编辑单价、数量、备注，与编辑明细规则一致。
+              {isPenaltyInvoice
+                ? "负数账单：单价可为负，总价按数量×单价计算。可从费用表选择后再改为负单价。"
+                : "列表默认展示当前客户且柜型匹配的全部费用；输入关键字后点击「搜索」进行模糊筛选。下方可编辑单价、数量、备注，与编辑明细规则一致。"}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -574,13 +608,15 @@ export function InvoiceBillDetailClient({
                     <Input
                       id="add-line-unit-price"
                       type="number"
-                      min={0}
+                      min={isPenaltyInvoice ? undefined : 0}
                       step="any"
                       value={lineUnitPrice}
                       onChange={(e) => setLineUnitPrice(e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      默认带出费用表单价，可按本单调整
+                      {isPenaltyInvoice
+                        ? "负数账单可填负单价；亦可先选费用再改为负数。"
+                        : "默认带出费用表单价，可按本单调整"}
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -626,12 +662,49 @@ export function InvoiceBillDetailClient({
         </DialogContent>
       </Dialog>
 
+      <Dialog
+        open={deleteLineId != null}
+        onOpenChange={(open) => {
+          if (!open && !submitting) setDeleteLineId(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>删除明细</DialogTitle>
+            <DialogDescription>
+              确定删除该条账单明细吗？删除后将重新汇总账单总金额。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteLineId(null)}
+              disabled={submitting}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void confirmDeleteLine()}
+              disabled={submitting}
+            >
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editLineOpen} onOpenChange={setEditLineOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>编辑明细</DialogTitle>
             <DialogDescription>
-              修改单价、数量、备注；总价按 数量×单价 重算。仅更新本账单明细行，不影响费用表。
+              {isPenaltyInvoice
+                ? "负数账单：单价可为负。总价按数量×单价重算，仅更新本行。"
+                : "修改单价、数量、备注；总价按 数量×单价 重算。仅更新本账单明细行，不影响费用表。"}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -640,7 +713,7 @@ export function InvoiceBillDetailClient({
               <Input
                 id="edit-line-unit-price"
                 type="number"
-                min={0}
+                min={isPenaltyInvoice ? undefined : 0}
                 step="any"
                 value={editUnitPrice}
                 onChange={(e) => setEditUnitPrice(e.target.value)}

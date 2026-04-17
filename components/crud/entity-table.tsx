@@ -2692,6 +2692,7 @@ export function EntityTable<T = any>({
               fieldConfig.relation?.model === 'customers' ? 'customers' : null,
               fieldConfig.relation?.model === 'customers' ? 'customer' : null,
               fieldConfig.relation?.model === 'orders' ? 'orders' : null,
+              fieldConfig.relation?.model === 'invoices' ? 'invoices' : null,
             ].filter((key): key is string => key !== null && typeof key === 'string')
 
             for (const key of possibleKeys) {
@@ -2716,6 +2717,8 @@ export function EntityTable<T = any>({
                 modelKey = ro?.customers != null ? 'customers' : ro?.customer != null ? 'customer' : null
               } else if (fieldConfig.relation.model === 'orders') {
                 modelKey = 'orders'
+              } else if (fieldConfig.relation.model === 'invoices') {
+                modelKey = 'invoices'
               }
               if (modelKey && (row.original as any)[modelKey]) {
                 relationData = (row.original as any)[modelKey]
@@ -2726,6 +2729,7 @@ export function EntityTable<T = any>({
               const displayField = fieldConfig.relation?.displayField || 'full_name'
               const displayValue =
                 relationData[displayField] ||
+                relationData.invoice_number ||
                 relationData.order_number ||
                 relationData.name ||
                 relationData.code ||
@@ -3232,6 +3236,14 @@ export function EntityTable<T = any>({
                   return "bg-gradient-to-r from-amber-100 via-yellow-50/80 to-amber-100 dark:from-amber-900/40 dark:via-yellow-900/30 dark:to-amber-900/40 hover:from-amber-200 hover:via-yellow-100/80 hover:to-amber-200 dark:hover:from-amber-800/50 dark:hover:via-yellow-800/40 dark:hover:to-amber-800/50"
                 }
                 if (row.has_created_sheet === true) {
+                  return "bg-gradient-to-r from-green-100 via-emerald-50/80 to-green-100 dark:from-green-900/40 dark:via-emerald-900/30 dark:to-green-900/40 hover:from-green-200 hover:via-emerald-100/80 hover:to-green-200 dark:hover:from-green-800/50 dark:hover:via-emerald-800/40 dark:hover:to-green-800/50"
+                }
+                return undefined
+              }
+            : config.name === 'invoice'
+            ? (row: any) => {
+                // 账单主表列表：已开票整行浅绿（与详情页明细行语义一致）
+                if (row.status === 'issued') {
                   return "bg-gradient-to-r from-green-100 via-emerald-50/80 to-green-100 dark:from-green-900/40 dark:via-emerald-900/30 dark:to-green-900/40 hover:from-green-200 hover:via-emerald-100/80 hover:to-green-200 dark:hover:from-green-800/50 dark:hover:via-emerald-800/40 dark:hover:to-green-800/50"
                 }
                 return undefined

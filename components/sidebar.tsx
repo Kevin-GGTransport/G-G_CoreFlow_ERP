@@ -215,7 +215,7 @@ const menuItems: MenuItem[] = [
         href: "/dashboard/finance/bills/container-unload",
       },
       {
-        title: "罚款账单",
+        title: "负数账单",
         icon: FileText,
         href: "/dashboard/finance/bills/penalty",
       },

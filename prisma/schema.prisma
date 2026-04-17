@@ -24,6 +24,7 @@ model delivery_appointments {
   delivery_method                                               String?                    @db.VarChar(50)
   appointment_account                                           String?                    @db.VarChar(100)
   rejected                                                      Boolean?                   @default(false)
+  enabled                                                       Boolean?                   @default(true) // 启用（预约是否生效）
   verify_po                                                     Boolean?                   @default(false) // 校验PO
   verify_loading_sheet                                           Boolean?                   @default(false) // 校验装车单（出库管理中可编辑，预约管理和订单明细中只读）
   can_create_sheet                                               Boolean?                   @default(false) // 可做单（预约管理中可编辑，出库管理中只读）
@@ -251,7 +252,7 @@ model delivery_status_codes {
 
 model invoices {
   invoice_id                                    BigInt    @id @default(autoincrement())
-  invoice_type                                  String    @default("storage") @db.VarChar(30)   // 账单类型：direct_delivery 直送 / unload 拆柜 / penalty 罚款 / storage 仓储
+  invoice_type                                  String    @default("storage") @db.VarChar(30)   // 账单类型：direct_delivery 直送 / unload 拆柜 / penalty 负数账单(存库值 penalty) / storage 仓储
   invoice_number                                String    @unique @db.VarChar(50)
   customer_id                                   BigInt
   order_id                                      BigInt?

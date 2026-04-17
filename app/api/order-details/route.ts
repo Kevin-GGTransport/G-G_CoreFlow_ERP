@@ -7,6 +7,7 @@ import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
 import { serializeBigInt } from '@/lib/api/helpers'
 import { scheduleDirectDeliveryInvoiceSync } from '@/lib/finance/direct-delivery-sync'
+import { scheduleContainerUnloadInvoiceSync } from '@/lib/finance/container-unload-sync'
 
 // GET - 获取仓点明细列表（支持 orderId 查询参数）
 export async function GET(request: NextRequest) {
@@ -311,6 +312,7 @@ export async function POST(request: NextRequest) {
 
     const uid = session.user?.id ? BigInt(session.user.id) : undefined
     scheduleDirectDeliveryInvoiceSync(BigInt(order_id), uid)
+    scheduleContainerUnloadInvoiceSync(BigInt(order_id), uid)
 
     return NextResponse.json(
       { data: serializeBigInt(orderDetail) },

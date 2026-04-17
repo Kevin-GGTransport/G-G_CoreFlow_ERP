@@ -117,7 +117,7 @@ export interface DetailTableConfig {
     po?: boolean // PO
     loadSheetNotes?: boolean // 装车单明细备注（出库详情）
     bolNotes?: boolean // BOL 明细备注（出库详情）
-    storageLocation?: boolean // 仓库位置（出库详情，对应入库明细，可编辑）
+    storageLocation?: boolean // 现在位置/仓库位置（入库 inventory_lots.storage_location_code，与入库详情一致；出库详情可编辑）
     unbookedPallets?: boolean // 未约板数（订单明细动态计算，只读）
     ignoreUnloadTimeCheck?: boolean // 忽略（预约明细：勾选后柜号强制绿色）
     windowPeriod?: boolean // 窗口期
@@ -1119,7 +1119,7 @@ export function DetailTable({
                   case 'bolNotes':
                     return <th key={col} className="text-left p-2 font-semibold text-sm min-w-[180px]">BOL明细备注</th>
                   case 'storageLocation':
-                    return <th key={col} className="text-left p-2 font-semibold text-sm min-w-[120px]">仓库位置</th>
+                    return <th key={col} className="text-left p-2 font-semibold text-sm min-w-[120px]">现在位置</th>
                   case 'unbookedPallets':
                     return <th key={col} className="text-left p-2 font-semibold text-sm min-w-[90px]">未约板数</th>
                   case 'ignoreUnloadTimeCheck':
@@ -1615,7 +1615,7 @@ export function DetailTable({
                           }
                           return <td key={col} className="p-2 text-sm min-w-[180px] whitespace-pre-wrap break-words">{(detail as any).bol_notes || '-'}</td>
                         case 'storageLocation':
-                          // 仓库位置（对应入库明细），出库详情中可编辑
+                          // 现在位置（入库 inventory_lots.storage_location_code），与入库管理详情一致；预约明细在编辑模式下可改
                           if (appointmentId && (editingRowId === detailId || isBatchEditMode)) {
                             const val = isBatchEditMode
                               ? (batchEditValues[detailId]?.storage_location_code ?? (detail as any).storage_location_code ?? '')
@@ -1635,7 +1635,7 @@ export function DetailTable({
                                     }
                                   }}
                                   className="w-full min-w-[100px]"
-                                  placeholder="仓库位置"
+                                  placeholder="现在位置"
                                 />
                               </td>
                             )

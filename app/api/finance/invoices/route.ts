@@ -1,6 +1,6 @@
 /**
  * 发票管理 API 路由 - Phase 1 骨架
- * 直送(direct_delivery)：自动发票号 S+年月+4 位；拆柜(unload)：U+年月+4 位；均默认当天开票日期
+ * 直送(direct_delivery)：自动发票号 S+年月+4 位；拆柜(unload)：C+年月+4 位；均默认当天开票日期
  */
 
 import { NextRequest } from 'next/server'

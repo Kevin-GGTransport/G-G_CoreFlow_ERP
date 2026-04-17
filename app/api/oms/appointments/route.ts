@@ -290,6 +290,7 @@ export async function GET(request: NextRequest) {
       
       // 拒收、校验PO、校验装车单、可做单、已做单
       const rejected = serialized.rejected ?? false;
+      const enabled = serialized.enabled ?? true;
       const verify_po = serialized.verify_po ?? false;
       const verify_loading_sheet = serialized.verify_loading_sheet ?? false;
       const can_create_sheet = serialized.can_create_sheet ?? false;
@@ -329,6 +330,7 @@ export async function GET(request: NextRequest) {
         eta,
         total_pallets: totalPallets, // 从 order_detail.estimated_pallets 计算
         rejected: rejected,
+        enabled,
         verify_po: verify_po,
         verify_loading_sheet: verify_loading_sheet,
         can_create_sheet: can_create_sheet,
@@ -457,6 +459,7 @@ export async function POST(request: NextRequest) {
       })() : null,
       status: data.status || '待处理',
       rejected: data.rejected !== undefined ? Boolean(data.rejected) : false,
+      enabled: data.enabled !== undefined ? Boolean(data.enabled) : true,
       verify_po: data.verify_po !== undefined ? Boolean(data.verify_po) : false,
       verify_loading_sheet: data.verify_loading_sheet !== undefined ? Boolean(data.verify_loading_sheet) : false,
       po: data.po || null,

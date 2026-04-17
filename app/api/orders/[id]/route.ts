@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { createDetailHandler, createUpdateHandler, createDeleteHandler } from '@/lib/crud/api-handler'
 import { orderConfig } from '@/lib/crud/configs/orders'
 import { scheduleDirectDeliveryInvoiceSync } from '@/lib/finance/direct-delivery-sync'
+import { scheduleContainerUnloadInvoiceSync } from '@/lib/finance/container-unload-sync'
 import { auth } from '@/auth'
 
 // GET - 获取订单详情
@@ -26,6 +27,7 @@ export async function PUT(
       const session = await auth()
       const userId = session?.user?.id ? BigInt(session.user.id) : undefined
       scheduleDirectDeliveryInvoiceSync(BigInt(id), userId)
+      scheduleContainerUnloadInvoiceSync(BigInt(id), userId)
     }
   }
   return res
