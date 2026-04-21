@@ -213,6 +213,11 @@ export async function GET(request: NextRequest) {
                   code: true,
                 },
               },
+              pickup_management: {
+                select: {
+                  current_location: true,
+                },
+              },
               inbound_receipt: {
                 select: {
                   inbound_receipt_id: true,
@@ -391,6 +396,7 @@ export async function GET(request: NextRequest) {
         remaining_pallets, // 已入库：与入库详情相同口径（预约实时）；未入库 null
         unbooked_pallets, // 已入库：与入库详情相同口径；未入库 预计-预约
         storage_location_code: il?.storage_location_code || null,
+        current_location: item.orders?.pickup_management?.current_location || null,
         notes: item.notes || null, // 备注应该关联订单明细的备注（order_detail.notes）
         window_period: item.window_period || null,
         fba: item.fba || null, // FBA字段

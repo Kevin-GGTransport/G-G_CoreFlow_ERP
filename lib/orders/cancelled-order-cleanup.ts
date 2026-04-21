@@ -8,16 +8,39 @@ export async function purgeOperationalDataForCancelledOrder(
   tx: Prisma.TransactionClient,
   orderId: bigint
 ): Promise<void> {
+  const orderDetails = await tx.order_detail.findMany({
+    where: { order_id: orderId },
+    select: { id: true },
+  })
+  const orderDetailIds = orderDetails.map((d) => d.id)
+
   await tx.pickup_management.deleteMany({ where: { order_id: orderId } })
 
-  const appointments = await tx.delivery_appointments.findMany({
+  const ownedAppointments = await tx.delivery_appointments.findMany({
     where: { order_id: orderId },
     select: { appointment_id: true },
   })
-  const appointmentIds = appointments.map((a) => a.appointment_id)
-  if (appointmentIds.length > 0) {
-    await tx.delivery_management.deleteMany({
-      where: { appointment_id: { in: appointmentIds } },
+  const ownedAppointmentIds = ownedAppointments.map((a) => a.appointment_id)
+
+  const crossOrderAppointmentIds =
+    orderDetailIds.length > 0
+      ? (
+          await tx.appointment_detail_lines.findMany({
+            where: { order_detail_id: { in: orderDetailIds } },
+            select: { appointment_id: true },
+            distinct: ['appointment_id'],
+          })
+        ).map((r) => r.appointment_id)
+      : []
+
+  const affectedAppointmentIds = [
+    ...new Set([...ownedAppointmentIds, ...crossOrderAppointmentIds]),
+  ]
+
+  if (orderDetailIds.length > 0) {
+    // 从所有预约中移除本订单明细（包括跨订单拼到同一预约的情况）
+    await tx.appointment_detail_lines.deleteMany({
+      where: { order_detail_id: { in: orderDetailIds } },
     })
   }
 
@@ -40,6 +63,30 @@ export async function purgeOperationalDataForCancelledOrder(
   }
 
   await tx.outbound_shipment_lines.deleteMany({ where: { order_id: orderId } })
+  await tx.invoices.deleteMany({ where: { order_id: orderId } })
 
-  await tx.delivery_appointments.deleteMany({ where: { order_id: orderId } })
+  if (ownedAppointmentIds.length > 0) {
+    await tx.delivery_appointments.deleteMany({
+      where: { appointment_id: { in: ownedAppointmentIds } },
+    })
+  }
+
+  if (affectedAppointmentIds.length > 0) {
+    const maybeEmptyAppointments = await tx.delivery_appointments.findMany({
+      where: { appointment_id: { in: affectedAppointmentIds } },
+      select: {
+        appointment_id: true,
+        _count: { select: { appointment_detail_lines: true } },
+      },
+    })
+    const emptyAppointmentIds = maybeEmptyAppointments
+      .filter((a) => a._count.appointment_detail_lines === 0)
+      .map((a) => a.appointment_id)
+
+    if (emptyAppointmentIds.length > 0) {
+      await tx.delivery_appointments.deleteMany({
+        where: { appointment_id: { in: emptyAppointmentIds } },
+      })
+    }
+  }
 }

@@ -3,6 +3,47 @@ import { checkAuth, serializeBigInt, addSystemFields } from '@/lib/api/helpers'
 import prisma from '@/lib/prisma'
 import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date'
 
+function includesInspectionKeyword(currentLocation: string | null | undefined): boolean {
+  return typeof currentLocation === 'string' && currentLocation.includes('查验')
+}
+
+async function syncInboundPlannedUnloadAtByPickupState(args: {
+  orderId: bigint
+  userId: bigint | null
+}): Promise<void> {
+  const { orderId, userId } = args
+  const [order, pickup, inbound] = await Promise.all([
+    prisma.orders.findUnique({
+      where: { order_id: orderId },
+      select: { pickup_date: true, eta_date: true },
+    }),
+    prisma.pickup_management.findUnique({
+      where: { order_id: orderId },
+      select: { current_location: true },
+    }),
+    prisma.inbound_receipt.findUnique({
+      where: { order_id: orderId },
+      select: { inbound_receipt_id: true },
+    }),
+  ])
+
+  if (!order || !inbound) return
+
+  const inspection = includesInspectionKeyword(pickup?.current_location)
+  const plannedUnloadAt = inspection
+    ? null
+    : calculateUnloadDate(order.pickup_date, order.eta_date)
+
+  await prisma.inbound_receipt.update({
+    where: { inbound_receipt_id: inbound.inbound_receipt_id },
+    data: {
+      planned_unload_at: plannedUnloadAt,
+      updated_by: userId,
+      updated_at: new Date(),
+    },
+  })
+}
+
 // GET - 获取单个提柜管理记录
 export async function GET(
   request: NextRequest,
@@ -305,47 +346,31 @@ async function updatePickupManagement(
         data: orderUpdateData,
       })
 
-      // 如果更新了 pickup_date 或 eta_date，同步更新入库管理的拆柜日期
+      // pickup/eta 更新后按规则同步入库拆柜日期
       if (body.pickup_date !== undefined || body.eta_date !== undefined) {
         try {
-          // 获取更新后的订单信息（包括 eta_date 和 pickup_date，用于计算）
-          const updatedOrder = await prisma.orders.findUnique({
-            where: { order_id: pickup.order_id },
-            select: {
-              pickup_date: true,
-              eta_date: true,
-            },
+          await syncInboundPlannedUnloadAtByPickupState({
+            orderId: pickup.order_id,
+            userId: user?.id ? BigInt(user.id) : null,
           })
-
-          if (updatedOrder) {
-            // 重新计算拆柜日期（提柜日期优先，如果没有提柜日期则使用ETA日期）
-            const calculatedUnloadDate = calculateUnloadDate(
-              updatedOrder.pickup_date,
-              updatedOrder.eta_date
-            )
-
-            // 查找对应的入库管理记录；仅当未录入拆柜人员时才同步（拆柜人员有值视为已录入，不再覆盖）
-            const inboundReceipt = await prisma.inbound_receipt.findUnique({
-              where: { order_id: pickup.order_id },
-              select: { inbound_receipt_id: true, unloaded_by: true },
-            })
-
-            if (inboundReceipt && calculatedUnloadDate && inboundReceipt.unloaded_by == null) {
-              await prisma.inbound_receipt.update({
-                where: { inbound_receipt_id: inboundReceipt.inbound_receipt_id },
-                data: {
-                  planned_unload_at: calculatedUnloadDate,
-                  updated_by: user?.id ? BigInt(user.id) : null,
-                  updated_at: new Date(),
-                },
-              })
-              console.log(`[提柜管理更新] 已同步更新入库管理拆柜日期: ${calculatedUnloadDate.toISOString().split('T')[0]}`)
-            }
-          }
         } catch (syncError: any) {
           // 如果同步更新失败，记录错误但不影响提柜管理的更新
           console.warn('[提柜管理更新] 同步更新入库管理拆柜日期失败:', syncError)
         }
+      }
+    }
+
+    // 现在位置更新后，也要立即同步入库拆柜日期：
+    // - 含「查验」 => 置空
+    // - 不含「查验」 => 按提柜/ETA重算
+    if (body.current_location !== undefined) {
+      try {
+        await syncInboundPlannedUnloadAtByPickupState({
+          orderId: pickup.order_id,
+          userId: user?.id ? BigInt(user.id) : null,
+        })
+      } catch (syncError: any) {
+        console.warn('[提柜管理更新] 按现在位置同步拆柜日期失败:', syncError)
       }
     }
 

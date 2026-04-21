@@ -352,6 +352,9 @@ export async function runInboundReceiptListQuery(
         inventoryLots,
       })
       const warehousePointCount = Array.isArray(orderDetails) ? orderDetails.length : 0
+      const currentLocation = order?.pickup_management?.current_location ?? null
+      const hidePlannedUnloadAt =
+        typeof currentLocation === 'string' && currentLocation.includes('查验')
 
       return {
         ...serialized,
@@ -363,6 +366,7 @@ export async function runInboundReceiptListQuery(
         ready_date: order?.ready_date || null,
         lfd_date: order?.lfd_date || null,
         pickup_date: order?.pickup_date || null,
+        planned_unload_at: hidePlannedUnloadAt ? null : serialized.planned_unload_at,
         carrier: order?.carriers || null,
         carrier_id: order?.carrier_id ? String(order.carrier_id) : null,
         unloaded_by: serialized.unloaded_by || null,
@@ -373,7 +377,7 @@ export async function runInboundReceiptListQuery(
         unload_method_name: serialized.unload_methods?.description || null,
         delivery_progress: calculatedDeliveryProgress,
         order_id: order?.order_id || serialized.order_id || null,
-        current_location: order?.pickup_management?.current_location ?? null,
+        current_location: currentLocation,
       }
     } catch (itemError: any) {
       console.error('序列化数据项失败:', itemError, item)

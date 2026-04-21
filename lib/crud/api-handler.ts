@@ -1826,15 +1826,36 @@ export function createBatchUpdateHandler(config: EntityConfig) {
         }
       })
 
-      // 执行批量更新
-      const result = await prismaModel.updateMany({
-        where: {
-          [idField]: {
-            in: bigIntIds,
+      // 执行批量更新（订单批量改「已取消」时，同步清理下游关联）
+      let result: { count: number }
+      if (
+        config.prisma?.model === 'orders' &&
+        processedUpdates.status === ORDER_STATUS_CANCELLED
+      ) {
+        result = await prisma.$transaction(async (tx) => {
+          const updated = await tx.orders.updateMany({
+            where: {
+              [idField]: {
+                in: bigIntIds,
+              },
+            },
+            data: processedUpdates,
+          })
+          for (const oid of bigIntIds) {
+            await purgeOperationalDataForCancelledOrder(tx, oid)
+          }
+          return { count: updated.count }
+        })
+      } else {
+        result = await prismaModel.updateMany({
+          where: {
+            [idField]: {
+              in: bigIntIds,
+            },
           },
-        },
-        data: processedUpdates,
-      })
+          data: processedUpdates,
+        })
+      }
 
       return NextResponse.json({
         message: `成功更新 ${result.count} 条${config.displayName}记录`,

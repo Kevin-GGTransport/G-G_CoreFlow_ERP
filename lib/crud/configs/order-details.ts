@@ -119,6 +119,13 @@ export const orderDetailConfig: EntityConfig = {
       sortable: true, // API 侧内存排序（关联 inventory_lots，最多 1 万条）
       searchable: true,
     },
+    current_location: {
+      key: 'current_location',
+      label: '现在位置',
+      type: 'text',
+      sortable: false, // 来自提柜管理（order 级），明细按所属订单复用同一位置
+      searchable: true,
+    },
     notes: {
       key: 'notes',
       label: '备注',
@@ -179,6 +186,7 @@ export const orderDetailConfig: EntityConfig = {
       'earliest_appointment_reference_number',
       'earliest_appointment_time',
       'storage_location_code',
+      'current_location',
       'notes',
       'delivery_progress',
     ],

@@ -1,6 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { checkAuth, serializeBigInt, addSystemFields } from '@/lib/api/helpers'
 import prisma from '@/lib/prisma'
+import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date'
+
+function includesInspectionKeyword(currentLocation: string | null | undefined): boolean {
+  return typeof currentLocation === 'string' && currentLocation.includes('查验')
+}
+
+async function syncInboundPlannedUnloadAtByPickupState(args: {
+  orderId: bigint
+  userId: bigint | null
+}): Promise<void> {
+  const { orderId, userId } = args
+  const [order, pickup, inbound] = await Promise.all([
+    prisma.orders.findUnique({
+      where: { order_id: orderId },
+      select: { pickup_date: true, eta_date: true },
+    }),
+    prisma.pickup_management.findUnique({
+      where: { order_id: orderId },
+      select: { current_location: true },
+    }),
+    prisma.inbound_receipt.findUnique({
+      where: { order_id: orderId },
+      select: { inbound_receipt_id: true },
+    }),
+  ])
+
+  if (!order || !inbound) return
+
+  const inspection = includesInspectionKeyword(pickup?.current_location)
+  const plannedUnloadAt = inspection
+    ? null
+    : calculateUnloadDate(order.pickup_date, order.eta_date)
+
+  await prisma.inbound_receipt.update({
+    where: { inbound_receipt_id: inbound.inbound_receipt_id },
+    data: {
+      planned_unload_at: plannedUnloadAt,
+      updated_by: userId,
+      updated_at: new Date(),
+    },
+  })
+}
 
 // POST - 批量更新提柜管理记录
 export async function POST(request: NextRequest) {
@@ -181,6 +223,26 @@ export async function POST(request: NextRequest) {
         where: { order_id: { in: orderIds } },
         data: orderUpdateData,
       })
+    }
+
+    // 批量更新后统一同步入库拆柜日期：
+    // - 现在位置含「查验」 => 置空
+    // - 不含「查验」 => 按提柜/ETA重算
+    if (
+      updates.current_location !== undefined ||
+      updates.pickup_date !== undefined ||
+      updates.eta_date !== undefined
+    ) {
+      const uniqueOrderIds = [...new Set(orderIds.map((id: bigint) => id.toString()))].map(
+        (id) => BigInt(id)
+      )
+      const actorId = user?.id ? BigInt(user.id) : null
+      for (const orderId of uniqueOrderIds) {
+        await syncInboundPlannedUnloadAtByPickupState({
+          orderId,
+          userId: actorId,
+        })
+      }
     }
 
     return NextResponse.json({
