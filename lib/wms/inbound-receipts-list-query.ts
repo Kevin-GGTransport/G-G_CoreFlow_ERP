@@ -353,8 +353,6 @@ export async function runInboundReceiptListQuery(
       })
       const warehousePointCount = Array.isArray(orderDetails) ? orderDetails.length : 0
       const currentLocation = order?.pickup_management?.current_location ?? null
-      const hidePlannedUnloadAt =
-        typeof currentLocation === 'string' && currentLocation.includes('查验')
 
       return {
         ...serialized,
@@ -366,7 +364,7 @@ export async function runInboundReceiptListQuery(
         ready_date: order?.ready_date || null,
         lfd_date: order?.lfd_date || null,
         pickup_date: order?.pickup_date || null,
-        planned_unload_at: hidePlannedUnloadAt ? null : serialized.planned_unload_at,
+        planned_unload_at: serialized.planned_unload_at,
         carrier: order?.carriers || null,
         carrier_id: order?.carrier_id ? String(order.carrier_id) : null,
         unloaded_by: serialized.unloaded_by || null,

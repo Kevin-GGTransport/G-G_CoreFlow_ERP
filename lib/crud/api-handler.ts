@@ -31,6 +31,7 @@ import {
   ordersWhereRootExcludeCancelledOnly,
 } from '@/lib/orders/order-visibility'
 import { purgeOperationalDataForCancelledOrder } from '@/lib/orders/cancelled-order-cleanup'
+import { syncInboundPlannedUnloadAtByPickupState } from '@/lib/wms/sync-inbound-planned-unload-from-pickup'
 
 /**
  * 获取 Prisma 模型
@@ -1556,6 +1557,21 @@ export function createUpdateHandler(config: EntityConfig) {
         } catch (pickupError: any) {
           // 如果创建失败（例如已存在），记录错误但不影响订单更新
           console.warn('自动创建/同步提柜管理记录失败:', pickupError)
+        }
+      }
+
+      // 订单修改提柜/到港日期后，与入库拆柜日期对齐（查验则置空，否则按规则重算）
+      if (
+        config.prisma?.model === 'orders' &&
+        (processedData.pickup_date !== undefined || processedData.eta_date !== undefined)
+      ) {
+        try {
+          await syncInboundPlannedUnloadAtByPickupState({
+            orderId: item.order_id,
+            userId: permissionResult.user?.id ? BigInt(permissionResult.user.id) : null,
+          })
+        } catch (syncErr: any) {
+          console.warn('[订单更新] 同步入库拆柜日期失败:', syncErr)
         }
       }
 

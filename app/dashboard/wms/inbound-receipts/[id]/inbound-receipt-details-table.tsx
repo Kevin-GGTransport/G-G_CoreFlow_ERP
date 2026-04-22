@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Pencil, Check, X, Tag } from "lucide-react"
 import Link from "next/link"
 // 移除 Dialog 导入，改用内联编辑
 import { toast } from "sonner"
@@ -136,6 +136,20 @@ export function InboundReceiptDetailsTable({
   } | null>(null)
 
   // 切换展开/收起
+  const handlePrintSingleDetailLabel = React.useCallback(
+    (detailId: string) => {
+      const qs = new URLSearchParams({
+        single: "1",
+        orderDetailId: detailId,
+      })
+      window.open(
+        `/api/wms/inbound-receipts/${inboundReceiptId}/print/labels?${qs.toString()}`,
+        "_blank"
+      )
+    },
+    [inboundReceiptId]
+  )
+
   const toggleExpand = (detailId: string) => {
     setExpandedRows(prev => {
       const next = new Set(prev)
@@ -703,18 +717,30 @@ export function InboundReceiptDetailsTable({
                 {/* 主行：仓点明细 */}
                 <TableRow>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => toggleExpand(detail.id)}
-                    >
-                      {isExpanded ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </Button>
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0"
+                        onClick={() => toggleExpand(detail.id)}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-primary"
+                        title="打印本行仓点标签（单张）"
+                        onClick={() => handlePrintSingleDetailLabel(detail.id)}
+                      >
+                        <Tag className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                   <TableCell>
                     {detail.delivery_nature === '亚马逊' ? 'AMZ' : (detail.delivery_nature || "-")}
