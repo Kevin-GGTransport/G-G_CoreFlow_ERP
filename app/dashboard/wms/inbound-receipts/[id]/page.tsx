@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { BackButton } from "@/components/ui/back-button"
 import prisma from "@/lib/prisma"
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from "@/lib/utils/delivery-appointment-enabled"
 import { InboundReceiptDetailPageClient } from "./inbound-receipt-detail-page-client"
 
 interface InboundReceiptDetailPageProps {
@@ -66,6 +67,7 @@ export default async function InboundReceiptDetailPage({ params }: InboundReceip
                 notes: true,
                 order_id: true,
                 appointment_detail_lines: {
+                  where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
                   select: {
                     id: true,
                     estimated_pallets: true,
@@ -82,7 +84,6 @@ export default async function InboundReceiptDetailPage({ params }: InboundReceip
                       },
                     },
                   },
-                  // 不添加 where 条件，查询所有关联的预约明细
                 },
               },
               orderBy: {
@@ -212,6 +213,7 @@ export default async function InboundReceiptDetailPage({ params }: InboundReceip
                     notes: true,
                     order_id: true,
                     appointment_detail_lines: {
+                      where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
                       select: {
                         id: true,
                         estimated_pallets: true,
@@ -228,7 +230,6 @@ export default async function InboundReceiptDetailPage({ params }: InboundReceip
                           },
                         },
                       },
-                      // 不添加 where 条件，查询所有关联的预约明细
                     },
                   },
                   orderBy: {

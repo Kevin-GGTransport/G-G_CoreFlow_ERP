@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
 import { inventoryLotCreateSchema } from '@/lib/validations/inventory-lot';
 import prisma from '@/lib/prisma'
+import {
+  prismaAppointmentDetailLinesWhereParentAppointmentActive,
+  prismaDeliveryAppointmentNotDisabled,
+} from '@/lib/utils/delivery-appointment-enabled'
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base';
 import {
   computeInboundOrderDetailDeliveryState,
@@ -247,6 +251,7 @@ export async function GET(request: NextRequest) {
             order_number: true,
             order_date: true,
             delivery_appointments: {
+              where: prismaDeliveryAppointmentNotDisabled,
               select: {
                 appointment_id: true,
                 reference_number: true,
@@ -281,6 +286,7 @@ export async function GET(request: NextRequest) {
               },
             },
             appointment_detail_lines: {
+              where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
               select: {
                 id: true,
                 estimated_pallets: true,
@@ -568,8 +574,15 @@ export async function POST(request: NextRequest) {
     });
 
     const appointmentLines = await prisma.appointment_detail_lines.findMany({
-      where: { order_detail_id: orderDetailId },
-      select: { estimated_pallets: true, rejected_pallets: true, delivery_appointments: { select: { confirmed_start: true } } },
+      where: {
+        order_detail_id: orderDetailId,
+        delivery_appointments: { is: { NOT: { enabled: false } } },
+      },
+      select: {
+        estimated_pallets: true,
+        rejected_pallets: true,
+        delivery_appointments: { select: { confirmed_start: true } },
+      },
     });
     const effective = (est: number, rej?: number | null) => (est || 0) - (rej ?? 0);
     const totalEffectivePallets = appointmentLines.reduce((sum, line) => sum + effective(line.estimated_pallets, line.rejected_pallets), 0);

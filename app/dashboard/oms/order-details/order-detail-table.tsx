@@ -927,7 +927,7 @@ export function OrderDetailTable() {
                     const est = appt.estimated_pallets ?? 0
                     const effective = Math.max(0, est - rej)
                     return (
-                      <TableRow key={appt.appointment_id || index}>
+                      <TableRow key={appt.appointment_detail_line_id ?? appt.appointment_id ?? index}>
                         <TableCell>{index + 1}</TableCell>
                         <TableCell>
                           {appt.reference_number ? (

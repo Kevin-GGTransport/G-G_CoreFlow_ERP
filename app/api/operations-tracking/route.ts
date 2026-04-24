@@ -6,6 +6,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
 import prisma from "@/lib/prisma"
+import {
+  prismaAppointmentDetailLinesWhereParentAppointmentActive,
+  prismaDeliveryAppointmentNotDisabled,
+} from "@/lib/utils/delivery-appointment-enabled"
 import { computeInboundReceiptHeaderDeliveryProgress } from "@/lib/utils/inbound-delivery-progress"
 import { serializeBigInt } from "@/lib/api/helpers"
 import { ordersWhereRootExcludeArchived, parseIncludeArchived } from "@/lib/orders/order-visibility"
@@ -236,6 +240,7 @@ export async function GET(request: NextRequest) {
             },
           },
           delivery_appointments: {
+            where: prismaDeliveryAppointmentNotDisabled,
             select: {
               appointment_id: true,
               reference_number: true,
@@ -270,6 +275,7 @@ export async function GET(request: NextRequest) {
                 },
               },
               appointment_detail_lines: {
+                where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
                 select: {
                   estimated_pallets: true,
                   rejected_pallets: true,

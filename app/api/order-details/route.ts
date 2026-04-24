@@ -5,6 +5,7 @@ import {
 } from '@/lib/utils/inbound-delivery-progress'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled'
 import { serializeBigInt } from '@/lib/api/helpers'
 import { scheduleDirectDeliveryInvoiceSync } from '@/lib/finance/direct-delivery-sync'
 import { scheduleContainerUnloadInvoiceSync } from '@/lib/finance/container-unload-sync'
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
           ],
         },
         appointment_detail_lines: {
+          where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
           select: {
             id: true,
             appointment_id: true,

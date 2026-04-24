@@ -102,6 +102,8 @@ export async function getOutboundShipmentDetail(
   })
 
   if (!appointment) return null
+  // 已停用预约仅出现在预约管理；出库侧详情/打印不加载
+  if (appointment.enabled === false) return null
   if (appointment.orders?.status === 'direct_delivery') return null
 
   const serialized = serializeBigInt(appointment)

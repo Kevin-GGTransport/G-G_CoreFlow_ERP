@@ -10,6 +10,14 @@ export function isDeliveryAppointmentEnabled(enabled: boolean | null | undefined
 export const prismaDeliveryAppointmentNotDisabled = { NOT: { enabled: false } } as const
 
 /**
+ * 嵌套查询 appointment_detail_lines 时用：只返回所属预约仍启用的明细。
+ * 已停用（软删）预约上的明细仅在预约管理模块展示，订单/入库/出库等不应加载。
+ */
+export const prismaAppointmentDetailLinesWhereParentAppointmentActive = {
+  delivery_appointments: { is: prismaDeliveryAppointmentNotDisabled },
+} as const
+
+/**
  * 将 delivery_appointments 查询条件与「未停用」合并；保留顶层关联筛选（如 outbound_shipments）。
  */
 export function withActiveDeliveryAppointmentsWhere(where: Record<string, any>): Record<string, any> {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkAuth, handleValidationError, handleError, serializeBigInt, addSystemFields } from '@/lib/api/helpers';
 import { inventoryLotUpdateSchema } from '@/lib/validations/inventory-lot';
 import prisma from '@/lib/prisma';
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled';
 
 // GET - 获取单个库存管理记录
 export async function GET(
@@ -245,6 +246,7 @@ export async function PUT(
               },
             },
             appointment_detail_lines: {
+              where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
               select: {
                 id: true,
                 estimated_pallets: true,

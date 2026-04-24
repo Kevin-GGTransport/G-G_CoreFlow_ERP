@@ -110,6 +110,10 @@ export async function applyOutboundShipmentRequestBody(
     return { error: '预约记录不存在', status: 404 }
   }
 
+  if (appointment.enabled === false) {
+    return { error: '该预约已停用，无法在出库管理中修改', status: 400 }
+  }
+
   if (appointment.orders?.status === 'direct_delivery') {
     return { error: '直送订单不在出库管理范围内', status: 400 }
   }

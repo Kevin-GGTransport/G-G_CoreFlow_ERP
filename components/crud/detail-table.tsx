@@ -1177,9 +1177,17 @@ export function DetailTable({
                 || context.orderNumber 
                 || '-'
 
+              const inactiveAppointmentLine =
+                !!appointmentId && (detail as any).booking_effective === false
+
               return (
                 <React.Fragment key={detailId || index}>
-                  <tr className="border-b last:border-b-0 hover:bg-muted/20">
+                  <tr
+                    className={cn(
+                      "border-b last:border-b-0 hover:bg-muted/20",
+                      inactiveAppointmentLine && "bg-muted/40 text-muted-foreground"
+                    )}
+                  >
                     {visibleColumns.map((col) => {
                       switch (col) {
                         case 'checkbox':

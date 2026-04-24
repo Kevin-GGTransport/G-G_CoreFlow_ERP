@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
     const order = searchParams.get('order') === 'asc' ? 'asc' : 'desc'
     const orderBy: any = { [sort]: order }
 
-    // 查询数据（限制最多10000条）；不包含已停用预约
+    // 查询数据（限制最多10000条）；不含已停用预约（与出库等业务一致）
     const appointments = await prisma.delivery_appointments.findMany({
       where: withActiveDeliveryAppointmentsWhere(where),
       orderBy,

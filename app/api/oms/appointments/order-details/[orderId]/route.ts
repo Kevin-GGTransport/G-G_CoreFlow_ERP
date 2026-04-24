@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { checkAuth } from '@/lib/api/helpers'
 import prisma from '@/lib/prisma'
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled'
 
 // GET - 获取订单的明细和库存信息
 export async function GET(
@@ -147,7 +148,10 @@ export async function GET(
 
         // 实时计算未约板数：有效占用 = estimated_pallets - rejected_pallets
         const appointmentLines = await prisma.appointment_detail_lines.findMany({
-          where: { order_detail_id: detail.id },
+          where: {
+            order_detail_id: detail.id,
+            ...prismaAppointmentDetailLinesWhereParentAppointmentActive,
+          },
           select: { estimated_pallets: true, rejected_pallets: true },
         })
         const effective = (est: number, rej?: number | null) => (est || 0) - (rej ?? 0)

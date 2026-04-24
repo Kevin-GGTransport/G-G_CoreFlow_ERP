@@ -139,7 +139,7 @@ export async function GET(request: NextRequest) {
     }
 
     const appointmentWhereActive = withActiveDeliveryAppointmentsWhere(appointmentWhere)
-    
+
     try {
       [appointments, total] = await Promise.all([
         prisma.delivery_appointments.findMany({

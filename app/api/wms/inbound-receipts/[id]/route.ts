@@ -3,6 +3,7 @@ import { checkAuth, checkPermission, WMS_FULL_ACCESS_PERMISSION_OPTIONS, handleV
 import { inboundReceiptUpdateSchema } from '@/lib/validations/inbound-receipt';
 import { inboundReceiptConfig } from '@/lib/crud/configs/inbound-receipts';
 import prisma from '@/lib/prisma';
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled';
 import { computeInboundReceiptHeaderDeliveryProgress } from '@/lib/utils/inbound-delivery-progress';
 import { calculateUnloadDate } from '@/lib/utils/calculate-unload-date';
 
@@ -61,6 +62,7 @@ export async function GET(
                 estimated_pallets: true,
                 delivery_nature: true,
                 appointment_detail_lines: {
+                  where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
                   select: {
                     estimated_pallets: true,
                     rejected_pallets: true,
@@ -309,6 +311,7 @@ export async function PUT(
                 id: true,
                 estimated_pallets: true,
                 appointment_detail_lines: {
+                  where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
                   select: {
                     estimated_pallets: true,
                     rejected_pallets: true,

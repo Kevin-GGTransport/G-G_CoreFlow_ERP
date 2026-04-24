@@ -7,6 +7,7 @@ import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generato
 import { applyArchivedFilterToDeliveryManagementWhere, parseIncludeArchived } from '@/lib/orders/order-visibility'
 import { buildDeliveryManagementOrderBy } from '@/lib/api/delivery-management-order-by'
 import { getDeliveryNearWindowUtcBounds } from '@/lib/utils/delivery-near-window'
+import { prismaDeliveryAppointmentNotDisabled } from '@/lib/utils/delivery-appointment-enabled'
 
 // GET - 获取送仓管理列表
 export async function GET(request: NextRequest) {
@@ -193,6 +194,18 @@ export async function GET(request: NextRequest) {
         where.delivery_appointments = { AND: [where.delivery_appointments, nearWindow] }
       } else {
         where.delivery_appointments = nearWindow
+      }
+    }
+
+    // 不展示已停用（软删）预约关联的送仓记录
+    {
+      const da = where.delivery_appointments
+      if (da && typeof da === 'object' && Array.isArray(da.AND)) {
+        da.AND.push(prismaDeliveryAppointmentNotDisabled)
+      } else if (da && typeof da === 'object') {
+        where.delivery_appointments = { AND: [da, prismaDeliveryAppointmentNotDisabled] }
+      } else {
+        where.delivery_appointments = prismaDeliveryAppointmentNotDisabled
       }
     }
 

@@ -8,6 +8,10 @@ import { resolveLogoDataUrl } from '@/lib/services/print/resolve-logo'
 import { formatDate } from '@/lib/services/print/print-templates'
 import type { OAKBOLData, OAKLoadSheetData } from '@/lib/services/print/types'
 import prisma from '@/lib/prisma'
+import {
+  prismaAppointmentDetailLinesWhereParentAppointmentActive,
+  prismaDeliveryAppointmentNotDisabled,
+} from '@/lib/utils/delivery-appointment-enabled'
 import { serializeBigInt } from '@/lib/api/helpers'
 
 function formatPrintTime(date: Date): string {
@@ -156,7 +160,10 @@ export async function loadBatchBOLData(ids: string[]): Promise<(OAKBOLData | nul
 
   const [appointments, allLines] = await Promise.all([
     prisma.delivery_appointments.findMany({
-      where: { appointment_id: { in: idSet } },
+      where: {
+        appointment_id: { in: idSet },
+        ...prismaDeliveryAppointmentNotDisabled,
+      },
       include: {
         orders: { select: { status: true } },
         locations: {
@@ -180,7 +187,10 @@ export async function loadBatchBOLData(ids: string[]): Promise<(OAKBOLData | nul
       },
     }),
     prisma.appointment_detail_lines.findMany({
-      where: { appointment_id: { in: idSet } },
+      where: {
+        appointment_id: { in: idSet },
+        ...prismaAppointmentDetailLinesWhereParentAppointmentActive,
+      },
       include: {
         order_detail: {
           select: {
@@ -365,7 +375,10 @@ export async function loadBatchLoadingSheetData(
 
   const [appointments, allLines] = await Promise.all([
     prisma.delivery_appointments.findMany({
-      where: { appointment_id: { in: idSet } },
+      where: {
+        appointment_id: { in: idSet },
+        ...prismaDeliveryAppointmentNotDisabled,
+      },
       include: {
         orders: { select: { status: true } },
         locations: { select: { location_code: true } },
@@ -380,7 +393,10 @@ export async function loadBatchLoadingSheetData(
       },
     }),
     prisma.appointment_detail_lines.findMany({
-      where: { appointment_id: { in: idSet } },
+      where: {
+        appointment_id: { in: idSet },
+        ...prismaAppointmentDetailLinesWhereParentAppointmentActive,
+      },
       include: {
         order_detail: {
           select: {

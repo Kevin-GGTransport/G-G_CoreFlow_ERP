@@ -6,6 +6,7 @@ import { serializeBigInt } from '@/lib/api/helpers'
 import { buildFilterConditions, mergeFilterConditions } from '@/lib/crud/filter-helper'
 import { enhanceConfigWithSearchFields } from '@/lib/crud/search-config-generator'
 import { computeInboundReceiptHeaderDeliveryProgress } from '@/lib/utils/inbound-delivery-progress'
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled'
 import {
   applyArchivedFilterToInboundReceiptWhere,
   parseIncludeArchived,
@@ -244,6 +245,7 @@ export async function runInboundReceiptListQuery(
             id: true,
             estimated_pallets: true,
             appointment_detail_lines: {
+              where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
               select: {
                 estimated_pallets: true,
                 rejected_pallets: true,

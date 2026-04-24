@@ -10,6 +10,7 @@
  */
 
 import prisma from '@/lib/prisma'
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled'
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 import { BaseImportService } from './import/base-import.service'
 import { ImportConfig, ImportError } from './import/types'
@@ -127,7 +128,10 @@ const appointmentImportConfig: ImportConfig<AppointmentImportRow> = {
 
     // 查询所有已存在的预约明细，计算每个订单明细已预约的板数
     const existingAppointmentDetails = await prisma.appointment_detail_lines.findMany({
-      where: { order_detail_id: { in: allOrderDetailIds } },
+      where: {
+        order_detail_id: { in: allOrderDetailIds },
+        ...prismaAppointmentDetailLinesWhereParentAppointmentActive,
+      },
       select: { order_detail_id: true, estimated_pallets: true, rejected_pallets: true },
     })
     const effective = (est: number, rej?: number | null) => (est || 0) - (rej ?? 0)

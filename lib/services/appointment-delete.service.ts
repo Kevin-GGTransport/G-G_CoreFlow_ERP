@@ -1,6 +1,6 @@
 /**
- * 预约删除（软删除）：不再物理删除主表与明细，仅将 enabled 置为 false，
- * 并删除送仓管理 / 出库单等与原先硬删一致的清理，再重算未约/剩余板数。
+ * 预约删除（软删除）：不物理删除 delivery_appointments，也不删除 appointment_detail_lines（保留可查），
+ * 仅将 enabled 置为 false；删除送仓管理 / 出库单；再重算未约/剩余板数（重算逻辑忽略已停用预约上的明细）。
  */
 
 import prisma from '@/lib/prisma'
@@ -8,7 +8,7 @@ import { recalcUnbookedRemainingForOrderDetails } from './recalc-unbooked-remain
 
 export class AppointmentDeleteService {
   /**
-   * 停用单个预约（保留明细与主表记录；板数通过重算回退）
+   * 停用单个预约（保留主表与全部明细行供查看；板数通过重算回退）
    * @returns skipped 为 true 表示记录已是停用状态，未再次写库
    */
   static async deleteAppointment(appointmentId: bigint): Promise<{ skipped: boolean }> {
@@ -37,7 +37,9 @@ export class AppointmentDeleteService {
         },
       })
 
-      console.log(`[预约删除] 预约 ${appointmentId} 包含 ${appointmentDetails.length} 个明细（软删除保留明细）`)
+      console.log(
+        `[预约删除] 预约 ${appointmentId} 停用：保留 ${appointmentDetails.length} 条明细行（仅不再计入未约等）`
+      )
 
       for (const d of appointmentDetails) {
         if (d.order_detail?.order_id) orderIdsToSync.add(d.order_detail.order_id)
@@ -60,7 +62,6 @@ export class AppointmentDeleteService {
         where: { appointment_id: appointmentId },
         data: {
           enabled: false,
-          total_pallets: 0,
           updated_at: new Date(),
         },
       })
@@ -68,7 +69,7 @@ export class AppointmentDeleteService {
       await recalcUnbookedRemainingForOrderDetails(orderDetailIds, tx)
 
       if (existing.order_id) orderIdsToSync.add(existing.order_id)
-      console.log(`[预约删除] 已停用预约主表：${appointmentId}`)
+      console.log(`[预约删除] 已停用预约：${appointmentId}`)
     })
 
     if (skipped) {

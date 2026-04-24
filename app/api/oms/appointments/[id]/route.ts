@@ -417,16 +417,8 @@ export async function PUT(
       },
       select: {
         delivery_method: true,
-        enabled: true,
       },
     });
-
-    if (originalItem?.enabled === false && finalData.enabled !== true) {
-      return NextResponse.json(
-        { error: '该预约已停用，无法修改。如需恢复请将「启用」设为开启后保存。' },
-        { status: 400 }
-      );
-    }
 
     const originalDeliveryMethod = originalItem?.delivery_method;
     const newDeliveryMethod = finalData.delivery_method !== undefined ? finalData.delivery_method : originalDeliveryMethod;

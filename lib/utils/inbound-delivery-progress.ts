@@ -3,6 +3,7 @@
  * 被入库主表/详情 API、订单明细 API、库存明细列表、运营追踪等复用。
  */
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
+import { isDeliveryAppointmentEnabled } from '@/lib/utils/delivery-appointment-enabled'
 
 /** 与入库详情页预约结构兼容（前端 appointments 或 Prisma appointment_detail_lines） */
 export type InboundAppointmentInput = {
@@ -52,7 +53,11 @@ export function resolveAppointmentsFromOrderDetail(detail: any): InboundAppointm
   }
   const lines = detail?.appointment_detail_lines || []
   return lines
-    .filter((line: any) => line?.delivery_appointments != null)
+    .filter(
+      (line: any) =>
+        line?.delivery_appointments != null &&
+        isDeliveryAppointmentEnabled(line.delivery_appointments.enabled)
+    )
     .map((line: any) => ({
       confirmed_start: line.delivery_appointments?.confirmed_start,
       estimated_pallets: line.estimated_pallets,

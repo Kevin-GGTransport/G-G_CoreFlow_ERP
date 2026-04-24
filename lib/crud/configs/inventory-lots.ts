@@ -3,6 +3,7 @@
  */
 
 import { EntityConfig } from '../types'
+import { prismaAppointmentDetailLinesWhereParentAppointmentActive } from '@/lib/utils/delivery-appointment-enabled'
 
 export const inventoryLotConfig: EntityConfig = {
   name: 'inventory_lot',
@@ -337,6 +338,7 @@ export const inventoryLotConfig: EntityConfig = {
             },
           },
           appointment_detail_lines: {
+            where: prismaAppointmentDetailLinesWhereParentAppointmentActive,
             select: {
               id: true,
               estimated_pallets: true,

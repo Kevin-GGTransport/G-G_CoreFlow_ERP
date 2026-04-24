@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import prisma from '@/lib/prisma'
+import { isDeliveryAppointmentEnabled } from '@/lib/utils/delivery-appointment-enabled'
 import { serializeBigInt } from '@/lib/api/helpers'
 import { basePalletCountForCalc } from '@/lib/utils/pallet-base'
 
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
           select: {
             reference_number: true,
             confirmed_start: true, // 送货时间，用于与拆柜时间对比
+            enabled: true,
           },
         },
       },
@@ -152,6 +154,9 @@ export async function GET(request: NextRequest) {
         console.warn(`[appointment-detail-lines] 跳过明细 id=${line.id}: order_detail=${!!orderDetail}, delivery_appointments=${!!deliveryAppointment}`)
         continue
       }
+      const booking_effective = isDeliveryAppointmentEnabled(
+        (deliveryAppointment as { enabled?: boolean | null }).enabled
+      )
       const serialized = serializeBigInt(line)
       const orderDetailOrders = orderDetail.orders ? serializeBigInt(orderDetail.orders) : null
       const locationCode = orderDetail.locations_order_detail_delivery_location_idTolocations?.location_code || null
@@ -210,6 +215,7 @@ export async function GET(request: NextRequest) {
         // 可做单（预约管理中可编辑，出库管理中只读）
         // SKU 明细
         order_detail_item_order_detail_item_detail_idToorder_detail: orderDetail.order_detail_item_order_detail_item_detail_idToorder_detail,
+        booking_effective: booking_effective,
       })
     }
 
