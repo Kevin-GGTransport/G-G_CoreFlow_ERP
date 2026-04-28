@@ -3521,6 +3521,10 @@ export function EntityTable<T = any>({
                 }
 
                 case 'select':
+                case 'badge':
+                  if (fieldConfig.type === 'badge' && (!fieldConfig.options || fieldConfig.options.length === 0)) {
+                    return null
+                  }
                   return (
                     <div key={fieldKey} className="space-y-2">
                       <label className="text-sm font-medium">
@@ -3533,7 +3537,7 @@ export function EntityTable<T = any>({
                       >
                         <option value="">不修改</option>
                         {fieldConfig.options?.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
+                          <option key={String(opt.value)} value={String(opt.value)}>
                             {opt.label}
                           </option>
                         ))}
