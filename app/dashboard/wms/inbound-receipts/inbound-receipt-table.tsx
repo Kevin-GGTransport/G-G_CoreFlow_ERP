@@ -19,6 +19,7 @@ import {
 import { IncludeArchivedOrdersToggle } from "@/components/order-visibility/include-archived-toggle"
 
 const EMPTY_EXTRA_LIST_PARAMS: Record<string, string> = {}
+const INBOUND_URGENT_STORAGE_KEY = 'inbound-receipts-urgent-ids-v1'
 
 /** 按 UTC 格式化为 YYYY-MM-DD */
 function formatDateUTC(d: Date): string {
@@ -92,6 +93,7 @@ export function InboundReceiptTable() {
   const router = useRouter()
   const [refreshKey, setRefreshKey] = React.useState(0)
   const [includeArchived, setIncludeArchived] = React.useState(false)
+  const [urgentInboundIds, setUrgentInboundIds] = React.useState<string[]>([])
   const extraListParams = React.useMemo(
     () => (includeArchived ? { includeArchived: "true" } : EMPTY_EXTRA_LIST_PARAMS),
     [includeArchived]
@@ -101,6 +103,28 @@ export function InboundReceiptTable() {
   const [listSearchParams, setListSearchParams] = React.useState<URLSearchParams>(
     () => new URLSearchParams()
   )
+  const urgentInboundIdSet = React.useMemo(() => new Set(urgentInboundIds), [urgentInboundIds])
+
+  React.useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(INBOUND_URGENT_STORAGE_KEY)
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        setUrgentInboundIds(parsed.map((id) => String(id)))
+      }
+    } catch {
+      // ignore parse errors from stale local cache
+    }
+  }, [])
+
+  React.useEffect(() => {
+    try {
+      window.localStorage.setItem(INBOUND_URGENT_STORAGE_KEY, JSON.stringify(urgentInboundIds))
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [urgentInboundIds])
 
   const handleExportFiltered = React.useCallback(() => {
     const p = new URLSearchParams(listSearchParams.toString())
@@ -174,6 +198,29 @@ export function InboundReceiptTable() {
       .catch(() => toast.error('复制失败，请重试'))
   }, [selectedInboundRows])
 
+  const applyUrgentFlag = React.useCallback((urgent: boolean) => {
+    const selectedIds = selectedInboundRows
+      .map((row: any) => row[INBOUND_ID_FIELD])
+      .filter(Boolean)
+      .map((id: any) => String(id))
+
+    if (selectedIds.length === 0) {
+      toast.error('请先选择要操作的记录')
+      return
+    }
+
+    setUrgentInboundIds((prev) => {
+      const set = new Set(prev)
+      selectedIds.forEach((id) => {
+        if (urgent) set.add(id)
+        else set.delete(id)
+      })
+      return Array.from(set)
+    })
+
+    toast.success(urgent ? `已将 ${selectedIds.length} 条记录标记为加急` : `已取消 ${selectedIds.length} 条记录的加急`)
+  }, [selectedInboundRows])
+
   const customBatchActions = React.useMemo(() => (
     <>
       <Button size="sm" variant="outline" onClick={openBatchUnloadSheet} className="min-w-[100px]">
@@ -214,8 +261,24 @@ export function InboundReceiptTable() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <Button
+        size="sm"
+        variant="destructive"
+        className="min-w-[90px]"
+        onClick={() => applyUrgentFlag(true)}
+      >
+        加急
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="min-w-[90px]"
+        onClick={() => applyUrgentFlag(false)}
+      >
+        取消加急
+      </Button>
     </>
-  ), [openBatchUnloadSheet, openBatchLabels, handleCopyContainerNumbers])
+  ), [openBatchUnloadSheet, openBatchLabels, handleCopyContainerNumbers, applyUrgentFlag])
 
   // 可点击列配置：柜号列可点击跳转到入库管理详情
   const customClickableColumns: ClickableColumnConfig<any>[] = React.useMemo(() => [
@@ -236,6 +299,31 @@ export function InboundReceiptTable() {
           : "无法查看详情：缺少入库管理ID",
     },
   ], [router])
+
+  const customCellRenderers = React.useMemo(() => ({
+    container_number: ({ row }: { row: any }) => {
+      const inboundReceiptId = row?.original?.inbound_receipt_id ? String(row.original.inbound_receipt_id) : ''
+      const isUrgent = inboundReceiptId ? urgentInboundIdSet.has(inboundReceiptId) : false
+      const text = row?.original?.container_number || '-'
+      const clickable = Boolean(row?.original?.inbound_receipt_id)
+
+      return (
+        <button
+          type="button"
+          className={`inline-flex items-center gap-1 font-semibold ${isUrgent ? 'text-red-600 dark:text-red-400' : ''} ${clickable ? 'hover:underline' : 'cursor-default'}`}
+          disabled={!clickable}
+          onClick={() => {
+            if (clickable) {
+              router.push(`/dashboard/wms/inbound-receipts/${row.original.inbound_receipt_id}`)
+            }
+          }}
+          title={clickable ? `点击查看入库管理详情 (ID: ${row.original.inbound_receipt_id})` : '无法查看详情：缺少入库管理ID'}
+        >
+          {text}
+        </button>
+      )
+    },
+  }), [router, urgentInboundIdSet])
 
   // 获取入库组部门ID（缓存，只获取一次）
   const departmentIdCacheRef = React.useRef<string | null | undefined>(undefined)
@@ -477,6 +565,7 @@ export function InboundReceiptTable() {
       onSearchParamsChange={setListSearchParams}
       onRowSelectionChange={setSelectedInboundRows}
       customBatchActions={customBatchActions}
+      customCellRenderers={customCellRenderers}
     />
   )
 }

@@ -57,6 +57,7 @@ export function OrderDetailPageClient({
   const handleRefresh = () => {
     router.refresh()
   }
+  const totalLocations = orderDetails.length
 
   return (
     <div className="space-y-6">
@@ -71,9 +72,14 @@ export function OrderDetailPageClient({
 
       {/* 仓点明细表格（可展开显示SKU） */}
       <Card className="border-0 shadow-lg">
-        <CardHeader>
-          <CardTitle>仓点明细</CardTitle>
-          <CardDescription>订单的仓点信息，点击展开查看每个仓点的SKU明细</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>仓点明细</CardTitle>
+            <CardDescription>订单的仓点信息，点击展开查看每个仓点的SKU明细</CardDescription>
+          </div>
+          <div className="text-sm text-muted-foreground whitespace-nowrap">
+            仓点总数：{totalLocations}（共 {totalLocations} 个仓点）
+          </div>
         </CardHeader>
         <CardContent>
           <OrderDetailsTable
